@@ -1,0 +1,26 @@
+# Dev convenience only. Mongo here is a single node (no replica set), which
+# is why the codebase avoids multi-document transactions (see
+# authController.ts's registerAgency comment) — add a replica set yourself
+# if you later want transactions.
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  api:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      MONGO_URI: mongodb://mongo:27017/cargoflow
+      ACCESS_TOKEN_SECRET: dev-access-secret-change-me
+      REFRESH_TOKEN_SECRET: dev-refresh-secret-change-me
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:

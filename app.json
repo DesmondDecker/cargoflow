@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "CargoFlow",
+    "slug": "cargoflow",
+    "scheme": "cargoflow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0B1F3A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.summittechnologies.cargoflow"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1F3A"
+      },
+      "package": "com.summittechnologies.cargoflow"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "CargoFlow uses the camera to scan documents and QR codes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CargoFlow accesses your photos so you can attach scanned or photographed documents to a container."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://api.cargoflow.example.com/api/v1"
+    }
+  }
+}
