@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireWarehouseAuth } from '../middleware/warehouseAuth';
-import { authRateLimiter } from '../middleware/rateLimit';
+import { authRateLimiter, refreshRateLimiter } from '../middleware/rateLimit';
 import { warehouseSignup, warehouseLogin, warehouseRefresh, warehouseMe } from '../controllers/warehouseAuthController';
 import * as ctrl from '../controllers/warehouseController';
 
@@ -8,7 +8,7 @@ const router = Router();
 
 router.post('/auth/signup', authRateLimiter, warehouseSignup);
 router.post('/auth/login', authRateLimiter, warehouseLogin);
-router.post('/auth/refresh', warehouseRefresh);
+router.post('/auth/refresh', refreshRateLimiter, warehouseRefresh);
 
 router.get('/me', requireWarehouseAuth, warehouseMe);
 router.get('/profile', requireWarehouseAuth, ctrl.getMyProfile);

@@ -1,6 +1,8 @@
 import NetInfo from '@react-native-community/netinfo';
 import { changeContainerStatus, updateContainerDates } from '../api/containerApi';
 import { readQueuedMutations, removeMutation, markMutationFailed, queueLength } from './mutationQueue';
+import { outboxLength } from './outbox';
+import { replayOutbox } from './outboxReplay';
 
 export type SyncStatus = 'idle' | 'syncing' | 'offline';
 
@@ -16,7 +18,7 @@ export function onSyncStatusChange(listener: (status: SyncStatus, pending: numbe
 }
 
 function notify() {
-  const pending = queueLength();
+  const pending = queueLength() + outboxLength();
   listeners.forEach((l) => l(currentStatus, pending));
 }
 
@@ -32,7 +34,7 @@ function notify() {
  */
 export async function replayQueue(): Promise<void> {
   const mutations = readQueuedMutations();
-  if (mutations.length === 0) return;
+  if (mutations.length === 0 && outboxLength() === 0) return;
 
   currentStatus = 'syncing';
   notify();
@@ -56,6 +58,9 @@ export async function replayQueue(): Promise<void> {
       }
     }
   }
+
+  // Clients, documents and driver assignments made offline go after the container changes.
+  await replayOutbox();
 
   currentStatus = 'idle';
   notify();

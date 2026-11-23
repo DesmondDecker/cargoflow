@@ -28,6 +28,11 @@ export interface TransportAssignmentDoc {
   requiredDate?: Date;
   contactName?: string;
   contactPhone?: string;
+  // Fee the agency agreed with the driver for this job. Optional: older jobs
+  // and jobs where none was set have no fee and don't count toward earnings.
+  fee?: number;
+  currency?: string;
+  assignedByUserId?: Types.ObjectId;
   status: TransportStatus;
   proofOfDelivery?: ProofOfDelivery;
   rating?: { stars: number; comment?: string };
@@ -46,6 +51,9 @@ const transportAssignmentSchema = new Schema<TransportAssignmentDoc>(
     requiredDate: { type: Date },
     contactName: { type: String },
     contactPhone: { type: String },
+    fee: { type: Number, min: 0 },
+    currency: { type: String, uppercase: true, trim: true, default: 'SLE' },
+    assignedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     status: {
       type: String,
       enum: ['pending', 'accepted', 'declined', 'picked_up', 'in_transit', 'delivered', 'cancelled'],

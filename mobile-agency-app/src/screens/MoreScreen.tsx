@@ -1,109 +1,83 @@
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
-import { Button } from '../components/Button';
-import { colors, spacing, typography } from '../theme/theme';
+import { colors, radius, spacing, typography } from '../theme/theme';
 import { useAuthStore } from '../store/authStore';
 import { MoreStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<MoreStackParamList, 'MoreHome'>;
 
-const MENU_ITEMS: { icon: string; label: string; description: string; to: keyof MoreStackParamList }[] = [
-  { icon: '🏢', label: 'Importers', description: "Your clients' complete history", to: 'Importers' },
-  { icon: '⏱️', label: 'Grace Periods', description: 'Per-carrier free storage & demurrage terms', to: 'DemurrageTerms' },
-  { icon: '🏷️', label: 'Customize Labels', description: 'Relabel statuses & document types for your staff', to: 'EditLabels' },
-  { icon: '📖', label: 'Guides & Help', description: 'How to use CargoFlow', to: 'Guides' },
+type IconName = keyof typeof Ionicons.glyphMap;
+
+const ITEMS: { icon: IconName; label: string; to: keyof MoreStackParamList; ownerAdminOnly?: boolean }[] = [
+  { icon: 'document-text-outline', label: 'Documents', to: 'Documents' },
+  { icon: 'shield-checkmark-outline', label: 'Customs Verification', to: 'CustomsSubmissions' },
+  { icon: 'cube-outline', label: 'Storage Bookings', to: 'StorageBookings' },
+  { icon: 'bar-chart-outline', label: 'Reports & Export', to: 'Reports' },
+  { icon: 'business-outline', label: 'Importers', to: 'Importers' },
+  { icon: 'id-card-outline', label: 'Agency Details', to: 'EditAgencyProfile' },
+  { icon: 'people-outline', label: 'Users & Permissions', to: 'Team', ownerAdminOnly: true },
+  { icon: 'timer-outline', label: 'Grace Periods', to: 'DemurrageTerms' },
+  { icon: 'options-outline', label: 'Rules & Deadlines', to: 'Rules', ownerAdminOnly: true },
+  { icon: 'pricetags-outline', label: 'Customize Labels', to: 'EditLabels' },
+  { icon: 'notifications-outline', label: 'Notifications', to: 'Notifications' },
+  { icon: 'settings-outline', label: 'App Preferences', to: 'AppPreferences' },
+  { icon: 'help-circle-outline', label: 'Help & Support', to: 'Guides' },
 ];
+
+function initials(name?: string): string {
+  return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+}
 
 export function MoreScreen({ navigation }: Props) {
   const user = useAuthStore((s) => s.user);
   const agency = useAuthStore((s) => s.agency);
   const logout = useAuthStore((s) => s.logout);
+  const items = ITEMS.filter((i) => !i.ownerAdminOnly || user?.role === 'owner' || user?.role === 'admin');
 
-  const confirmLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+  const confirmLogout = () =>
+    Alert.alert('Log out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => logout() },
+      { text: 'Log out', style: 'destructive', onPress: () => logout() },
     ]);
-  };
 
   return (
     <Screen>
-      <Text style={styles.title}>More</Text>
+      <View style={styles.profile}>
+        <View style={styles.avatar}><Text style={styles.avatarText}>{initials(agency?.name)}</Text></View>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.h2}>{agency?.name || 'Your agency'}</Text>
+          <Text style={typography.caption}>{user?.name}{user?.role ? ` · ${user.role}` : ''}{agency?.agencyCode ? ` · Code ${agency.agencyCode}` : ''}</Text>
+        </View>
+      </View>
 
-      {MENU_ITEMS.map((item) => (
-        <Pressable key={item.to} onPress={() => navigation.navigate(item.to as never)}>
-          <Card style={styles.menuCard}>
-            <View style={styles.menuRow}>
-              <Text style={styles.menuIcon}>{item.icon}</Text>
-              <View style={styles.menuText}>
-                <Text style={styles.menuLabel}>{item.label}</Text>
-                <Text style={styles.menuDescription}>{item.description}</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </View>
-          </Card>
+      <Card style={styles.list}>
+        {items.map((item, i) => (
+          <Pressable key={item.to} onPress={() => navigation.navigate(item.to as never)} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
+            <Ionicons name={item.icon} size={22} color={colors.navy} />
+            <Text style={styles.label}>{item.label}</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        ))}
+        <Pressable onPress={confirmLogout} style={[styles.row, styles.rowTop]}>
+          <Ionicons name="log-out-outline" size={22} color={colors.urgent} />
+          <Text style={[styles.label, { color: colors.urgent }]}>Log out</Text>
         </Pressable>
-      ))}
-
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Account</Text>
-        <Row label="Name" value={user?.name || '—'} />
-        <Row label="Role" value={user?.role || '—'} />
-        {user?.phone ? <Row label="Phone" value={user.phone} /> : null}
       </Card>
-
-      <Pressable onPress={() => navigation.navigate('EditAgencyProfile')}>
-        <Card style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Agency</Text>
-            <Text style={styles.editLink}>Edit</Text>
-          </View>
-          <Row label="Name" value={agency?.name || '—'} />
-          <Row label="Agency Code" value={agency?.agencyCode || '—'} />
-        </Card>
-      </Pressable>
-
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Coming to this app next</Text>
-        <Text style={styles.comingSoon}>Camera-based document scanning (crop, multi-page)</Text>
-        <Text style={styles.comingSoon}>QR / barcode scanner</Text>
-        <Text style={styles.comingSoon}>Reports & export</Text>
-        <Text style={styles.comingSoon}>Offline mode (SQLite sync)</Text>
-      </Card>
-
-      <Button title="Log Out" variant="danger" onPress={confirmLogout} style={styles.logout} />
     </Screen>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  title: { ...typography.h1, marginBottom: spacing.lg },
-  menuCard: { marginBottom: spacing.md },
-  menuRow: { flexDirection: 'row', alignItems: 'center' },
-  menuIcon: { fontSize: 24, marginRight: spacing.md },
-  menuText: { flex: 1 },
-  menuLabel: { ...typography.bodyMedium, fontSize: 16 },
-  menuDescription: { ...typography.caption, marginTop: 2 },
-  chevron: { fontSize: 22, color: colors.textMuted },
-  section: { marginBottom: spacing.md },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  editLink: { ...typography.caption, color: colors.orange, fontWeight: '600' },
-  sectionTitle: { ...typography.h3, marginBottom: spacing.sm },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  rowLabel: { ...typography.caption },
-  rowValue: { ...typography.bodyMedium },
-  comingSoon: { ...typography.body, color: colors.textSecondary, marginBottom: 4 },
-  logout: { marginTop: spacing.lg },
+  profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
+  avatar: { width: 56, height: 56, borderRadius: radius.pill, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: colors.white, fontSize: 20, fontWeight: '700' },
+  list: { padding: 0, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg, paddingHorizontal: spacing.lg },
+  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  rowTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  label: { flex: 1, ...typography.bodyMedium },
 });

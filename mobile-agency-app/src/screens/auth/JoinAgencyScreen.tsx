@@ -17,6 +17,8 @@ export function JoinAgencyScreen({ navigation }: Props) {
   const clearError = useAuthStore((s) => s.clearError);
   const [agencyCode, setAgencyCode] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -28,8 +30,16 @@ export function JoinAgencyScreen({ navigation }: Props) {
       setValidationError('Agency code, password, and your name are required.');
       return;
     }
+    if (!/^\d{6}$/.test(pin)) {
+      setValidationError('Your PIN must be exactly 6 digits.');
+      return;
+    }
+    if (pin !== confirmPin) {
+      setValidationError('The two PINs do not match.');
+      return;
+    }
     try {
-      await joinAgency({ agencyCode: agencyCode.trim().toUpperCase(), password, name: name.trim(), phone: phone.trim() || undefined });
+      await joinAgency({ agencyCode: agencyCode.trim().toUpperCase(), password, pin, name: name.trim(), phone: phone.trim() || undefined });
     } catch {
       // The store already captured the specific backend message in `error`.
     }
@@ -41,13 +51,15 @@ export function JoinAgencyScreen({ navigation }: Props) {
     <Screen>
       <Text style={styles.title}>Join an Agency</Text>
       <Text style={styles.subtitle}>
-        Ask your supervisor for the agency code and the current agency password. Your name is how you'll show up in every
+        Ask your supervisor for the agency code and the current agency password (used only to join). Then choose your own 6-digit PIN — you will use it to log in. Your name is how you'll show up in every
         activity log — enter it exactly as you want colleagues to see it.
       </Text>
 
       <Field label="Agency Code" placeholder="e.g. K3F9XQ" autoCapitalize="characters" value={agencyCode} onChangeText={setAgencyCode} />
       <Field label="Agency Password" placeholder="••••••••" secureTextEntry value={password} onChangeText={setPassword} />
       <Field label="Your Full Name" placeholder="e.g. Ibrahim Bangura" value={name} onChangeText={setName} />
+      <Field label="Choose Your PIN (6 digits)" placeholder="6 digits" secureTextEntry keyboardType="number-pad" maxLength={6} value={pin} onChangeText={setPin} />
+      <Field label="Confirm Your PIN" placeholder="Re-enter PIN" secureTextEntry keyboardType="number-pad" maxLength={6} value={confirmPin} onChangeText={setConfirmPin} />
       <Field label="Phone Number (optional)" placeholder="e.g. 076123456" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
 
       {displayedError ? <Text style={styles.error}>{displayedError}</Text> : null}

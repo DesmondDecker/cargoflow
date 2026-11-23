@@ -1,5 +1,5 @@
 import { api } from './client';
-import { ApiEnvelope, ContainerCaseFile, ContainerListItem, DashboardStats, AttentionLevel, ExternalTrackingLookup } from '../types/api';
+import { ApiEnvelope, LiveTracking, ContainerCaseFile, ContainerListItem, DashboardStats, AttentionLevel, ExternalTrackingLookup } from '../types/api';
 
 export async function fetchContainers(params?: {
   status?: string;
@@ -64,6 +64,48 @@ export async function refreshContainerTracking(id: string) {
   return data.data;
 }
 
+export async function setContainerShippingLine(id: string, shippingLine: string) {
+  const { data } = await api.patch<ApiEnvelope<{ container: ContainerListItem }>>(`/containers/${id}/shipping-line`, { shippingLine });
+  return data.data.container;
+}
+
+export async function pasteContainerTracking(id: string, text: string) {
+  const { data } = await api.post<ApiEnvelope<{ liveTracking: LiveTracking; warnings: string[] }>>(
+    `/containers/${id}/paste-tracking`,
+    { text }
+  );
+  return data.data;
+}
+
+export interface TrackingProposal {
+  containerFound: boolean;
+  status?: string;
+  latestEvent?: { description: string; at?: string };
+  eta?: string;
+  departedAt?: string;
+  vesselName?: string;
+}
+
+export async function previewContainerTracking(id: string, text: string) {
+  const { data } = await api.post<ApiEnvelope<{ proposal: TrackingProposal }>>(`/containers/${id}/preview-tracking`, { text });
+  return data.data.proposal;
+}
+
+export async function saveReviewedTracking(
+  id: string,
+  input: {
+    carrierName: string;
+    status: string;
+    vesselName?: string;
+    eta?: string;
+    departedAt?: string;
+    latestEvent?: { description: string; location?: string; at?: string };
+  }
+) {
+  const { data } = await api.post<ApiEnvelope<{ liveTracking: LiveTracking }>>(`/containers/${id}/save-tracking`, input);
+  return data.data.liveTracking;
+}
+
 export async function resolveCode(code: string) {
   const { data } = await api.get<ApiEnvelope<{
     type: string;
@@ -88,4 +130,14 @@ export async function globalSearch(q: string) {
     }>
   >('/search', { params: { q } });
   return data.data;
+}
+
+export interface TrackingSourceSummary {
+  carrier: string;
+  liveSources: string[];
+}
+
+export async function fetchTrackingSources() {
+  const { data } = await api.get<ApiEnvelope<{ carriers: TrackingSourceSummary[] }>>('/containers/tracking-sources');
+  return data.data.carriers;
 }

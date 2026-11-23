@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchAgencies, updateAgencySubscription, updateAgencyActive, resetAgencyPassword } from '../api/adminApi';
+import { fetchAgencies, updateAgencySubscription, updateAgencyActive, resetAgencyPassword, resetAgencyOwnerPin } from '../api/adminApi';
 import { apiErrorMessage } from '../api/client';
 import { Agency, SubscriptionStatus } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
@@ -19,6 +19,7 @@ export function AgenciesPage() {
   const [confirmTarget, setConfirmTarget] = useState<{ agency: Agency; nextStatus: SubscriptionStatus } | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<{ agency: Agency; nextActive: boolean } | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<Agency | null>(null);
+  const [pinTarget, setPinTarget] = useState<Agency | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const load = () => {
@@ -67,6 +68,20 @@ export function AgenciesPage() {
       await resetAgencyPassword(passwordTarget._id, newPassword);
       setPasswordTarget(null);
       setSuccessMessage(`Password reset for ${passwordTarget.name}. Share the new password with them directly — it won't be shown again here.`);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const applyOwnerPinReset = async (newPin: string) => {
+    if (!pinTarget) return;
+    setBusyId(pinTarget._id);
+    try {
+      await resetAgencyOwnerPin(pinTarget._id, newPin);
+      setPinTarget(null);
+      setSuccessMessage(`Owner PIN reset for ${pinTarget.name}. Tell the owner the new PIN directly — it won't be shown again here.`);
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -155,7 +170,10 @@ export function AgenciesPage() {
                         {agency.isActive ? 'Suspend Account' : 'Reactivate'}
                       </button>
                       <button className="btn btn-outline btn-sm" disabled={busyId === agency._id} onClick={() => setPasswordTarget(agency)}>
-                        Reset Password
+                        Reset Join Password
+                      </button>
+                      <button className="btn btn-outline btn-sm" disabled={busyId === agency._id} onClick={() => setPinTarget(agency)}>
+                        Reset Owner PIN
                       </button>
                     </div>
                   </td>
@@ -224,11 +242,22 @@ export function AgenciesPage() {
 
       {passwordTarget && (
         <SetPasswordModal
-          title={`Reset password for ${passwordTarget.name}`}
-          warning="This immediately revokes every staff member's session. Verify who you're talking to before doing this — this endpoint doesn't check identity beyond your own admin login."
+          title={`Reset join password for ${passwordTarget.name}`}
+          warning="This is the password new staff join with. It does not sign anyone out. Verify who you're talking to before doing this — this endpoint doesn't check identity beyond your own admin login."
           busy={busyId === passwordTarget._id}
           onConfirm={applyPasswordReset}
           onCancel={() => setPasswordTarget(null)}
+        />
+      )}
+
+      {pinTarget && (
+        <SetPasswordModal
+          title={`Reset owner PIN for ${pinTarget.name}`}
+          warning="Sets a new 6-digit PIN for the agency's only owner and signs that person out. Verify who you're talking to first — this endpoint doesn't check identity beyond your own admin login."
+          busy={busyId === pinTarget._id}
+          minLength={6}
+          onConfirm={applyOwnerPinReset}
+          onCancel={() => setPinTarget(null)}
         />
       )}
     </div>

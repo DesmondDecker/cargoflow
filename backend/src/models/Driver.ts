@@ -9,8 +9,11 @@ export interface DriverDoc {
   passwordHash: string;
   location?: string;
   yearsExperience?: number;
+  licenseDocumentUrl?: string;
   verificationStatus: VerificationStatus;
   availability: boolean;
+  pushToken?: string; // Expo push token, set via PATCH /driver/push-token
+  notificationPrefs?: { jobAlerts?: boolean }; // missing means on
   isActive: boolean;
   ratingTotal: number; // ratingAverage is derived (ratingTotal / ratingCount), not stored redundantly
   ratingCount: number;
@@ -29,8 +32,11 @@ const driverSchema = new Schema<DriverDoc>(
     passwordHash: { type: String, required: true },
     location: { type: String, trim: true },
     yearsExperience: { type: Number },
+    licenseDocumentUrl: { type: String, trim: true },
     verificationStatus: { type: String, enum: ['unverified', 'pending', 'verified', 'rejected'], default: 'unverified' },
     availability: { type: Boolean, default: false },
+    pushToken: { type: String },
+    notificationPrefs: { jobAlerts: { type: Boolean } },
     isActive: { type: Boolean, default: true },
     ratingTotal: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },

@@ -17,6 +17,7 @@ npx expo start
 ```
 
 Scan the QR code with Expo Go (iOS/Android), or press `i` / `a` for a simulator/emulator.
+Expo Go does not include the native document-scanner module; use **Capture page (camera)** there. The automatic edge-detection scanner requires a development or production build, and the app must be reinstalled after adding or changing native modules.
 
 ## Design
 
@@ -48,25 +49,27 @@ New agencies aren't blocked by anything at signup — there's no payment step in
   - `db.ts` — a local SQLite database (`expo-sqlite`)
   - `containerCache.ts` — the containers list is cached on every successful load; if a later load fails (no connectivity), the screen falls back to the cache automatically and shows an "Offline — showing containers from your last sync" banner instead of an error
   - `mutationQueue.ts` + `syncEngine.ts` — changing a container's status while offline queues the change locally (and updates the screen optimistically) instead of failing; `@react-native-community/netinfo` detects when connectivity returns and replays the queue automatically. A `409` conflict (the container changed elsewhere in the meantime) drops the queued mutation rather than retrying forever — the backend's `clientVersion` check is what catches this, exactly as it was designed to
-  - **What this does not cover**: only the containers list (read) and status changes (write) are offline-aware. Importers, documents, driver assignment, and date updates all still require connectivity. Extending the same cache/queue pattern to those is straightforward given the foundation here, but it's real work, not a checkbox — see "not built yet" below for the honest scope.
+  - `outbox.ts` + `outboxReplay.ts` — things done with no signal that are not one container's status: **adding or editing a client, a scanned document waiting to upload (the finished PDF is kept on the phone), and a driver assignment**. They are sent in order when the connection returns. Last-seen copies of the clients list and of the drivers offered for a container are kept so those screens still open. Something the server later refuses (for example the driver is no longer free) is not silently lost: it is listed under More > App Preferences > Offline sync until dismissed.
+  - **What this does not cover**: registering a new container or bill of lading, finance (expenses, payments), letters, Customs submissions, storage bookings, reports, and everything under Settings still need a connection. A client created offline cannot be used to register a container until it has synced. The offline replay is covered by unit tests; it has not been run on a device.
 - **Find a Driver / Transport** — from a container's case file, see verified drivers whose vehicles match the container's size, pick one, and assign a pickup/destination.
 - **Importers** — list + profile view, reached via More → Importers.
 - **More** — a navigation hub (Importers, Guides & Help) plus account/agency info and logout.
 
 ## What's not built yet (backend already supports most of these — next passes)
 
-- **True document scanning** — automatic edge detection, perspective correction, auto-crop. What exists now (multi-page camera capture + PDF assembly) is a real step up from a single gallery photo, but it's manual capture, not "scan."
-- **Offline coverage beyond containers list + status changes** — see above. Importers, documents, dates, and driver assignment are not yet cache/queue-aware.
-- QR/barcode scanner tied to `/search/resolve/:code`
-- The separate driver-facing app — **this now exists as its own project, `cargoflow-driver`**, not part of this app. See its own README for what it covers (job accept/decline, status updates, proof of delivery with photo + signature + GPS) and what it still lacks (push notifications, offline support).
+- **Document scanning** now uses the phone's own scanner (edge detection, perspective correction, auto-crop) in an installed build; Expo Go falls back to plain camera capture. Not yet tested on a device.
+- **Offline coverage** is the list in the Offline section above; everything else needs a connection.
+- QR/barcode scanner tied to `/search/resolve/:code` (the search box resolves codes typed in, but there is no camera scanning)
+- The driver-facing app lives in `../driver-app` and now has push notifications and offline support; see its README.
 - Reports/export UI
 
-## Expo SDK 54 upgrade notes
+## Expo SDK 57 notes
 
-- **React Navigation was bumped from v6 to v7**, not just patched — v6 predates React 19 (which React Native 0.81 requires) and isn't safe to run on it. v7 is the officially supported version for this RN/React combination, but there's an **open, unresolved GitHub issue** (react-navigation/react-navigation#12921) describing a native `TypeError: expected dynamic type 'boolean', but had type 'string'` crash under React 19 in some configurations. I couldn't reproduce or rule this out here — I have no way to run this app on a real device or simulator in this environment. Test navigation thoroughly on a real device after upgrading, and run `npx expo-doctor` before shipping.
-- **`expo-file-system` v19 replaced the old string-based API** (`readAsStringAsync`, `EncodingType`) with a new object-oriented File/Directory API by default. `DocumentScannerScreen.tsx` now imports from `expo-file-system/legacy` specifically to keep using the old, simpler API for one-off base64 reads — this still works but is worth migrating to the new API eventually, since the legacy path won't be maintained forever.
-- **Android edge-to-edge is now mandatory** (SDK 54 targets Android 16/API 36) and can no longer be disabled. This app's screens already use `SafeAreaView` broadly, but genuine edge-to-edge layout wasn't re-verified visually — check status bar / gesture bar overlap on a real Android device.
-- Two real type errors surfaced during this upgrade (not hypothetical) — a `RefreshControl` generic typing issue in `Screen.tsx` and the file-system API change above — both fixed. This is exactly the kind of thing `tsc --noEmit` catches that a version bump alone wouldn't.
+- Expo SDK 57: React Native 0.86.3, React 19.2.3, TypeScript 6, React Navigation 7.5+. Package versions come from the SDK's own `bundledNativeModules.json`. `react-native-google-mobile-ads` is `^17.4.0` because 17.4 requires React Native 0.86.
+- `baseUrl` was removed from `tsconfig.json` (deprecated in TypeScript 6; nothing used the `@/` alias).
+- `<StatusBar>` no longer takes `backgroundColor`: Android is edge-to-edge only, so the header must provide its own colour. Check status bar and gesture bar overlap on a real Android device.
+- `DocumentScannerScreen.tsx` still imports `expo-file-system/legacy`; it bundled on SDK 57 but is worth migrating to the new File API.
+- Typechecks and bundles for Android and iOS. Not run on a device. Native modules (document scanner, push notifications, AdMob) need a development or production build, not Expo Go.
 
 ## Project structure
 
@@ -80,6 +83,6 @@ src/
   components/   shared UI (Button, Field, Card, Screen, AttentionBadge, Logo)
   data/         static in-app content (onboarding slides, guides)
   utils/        onboarding-seen flag storage
-  offline/      SQLite db, container cache, mutation queue, sync engine
+  offline/      SQLite db, container cache, mutation queue, outbox (clients, documents, driver assignments), sync engine
   types/        API response shapes shared across screens
 ```

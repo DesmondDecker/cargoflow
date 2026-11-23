@@ -7,7 +7,7 @@ import { AppError } from './AppError';
 // even though all three are signed with the same secret. Every auth
 // middleware below verifies `aud` explicitly rather than trusting `scope`
 // alone.
-export type TokenAudience = 'agency-app' | 'driver-app' | 'admin-app' | 'warehouse-app';
+export type TokenAudience = 'agency-app' | 'driver-app' | 'admin-app' | 'warehouse-app' | 'institution-portal';
 
 export interface AccessTokenPayload {
   sub: string; // user/driver/admin id

@@ -10,6 +10,8 @@ import { ContainerModel } from '../models/Container';
 import { ActivityLogModel } from '../models/ActivityLog';
 import { createPresignedUploadUrl } from '../services/storageService';
 import { driverSummary } from './driverAuthController';
+import { pushToAgencyUser, pushToDriver } from '../services/notifyService';
+import { summarizeEarnings } from '../services/earningsService';
 
 export const getMyJobs = asyncHandler(async (req: Request, res: Response) => {
   const jobs = await TransportAssignmentModel.find({
@@ -18,6 +20,20 @@ export const getMyJobs = asyncHandler(async (req: Request, res: Response) => {
   })
     .populate('containerId')
     .sort({ createdAt: -1 });
+  return ok(res, { jobs });
+});
+
+// Finished jobs (delivered, declined, cancelled), newest first. getMyJobs only
+// returns open work, so without this a driver could never look back at what
+// they delivered.
+export const getJobHistory = asyncHandler(async (req: Request, res: Response) => {
+  const jobs = await TransportAssignmentModel.find({
+    driverId: req.auth!.driverId,
+    status: { $in: ['delivered', 'declined', 'cancelled'] },
+  })
+    .populate('containerId', 'containerNumber size shippingLine')
+    .sort({ updatedAt: -1 })
+    .limit(50);
   return ok(res, { jobs });
 });
 
@@ -46,6 +62,14 @@ export const respondToJob = asyncHandler(async (req: Request, res: Response) => 
     // not get stuck showing "Driver Assigned" with no actual driver working it.
     await ContainerModel.updateOne({ _id: job.containerId }, { $set: { status: 'Transport Required', transportAssignmentId: undefined } });
   }
+
+  const [driver, respondedContainer] = await Promise.all([DriverModel.findById(job.driverId), ContainerModel.findById(job.containerId)]);
+  await pushToAgencyUser(
+    job.assignedByUserId,
+    decision === 'accept' ? 'Driver accepted the job' : 'Driver declined the job',
+    `${driver?.name || 'A driver'} ${decision === 'accept' ? 'accepted' : 'declined'} ${respondedContainer?.containerNumber || 'the container'}`,
+    { screen: 'ContainerCaseFile', containerId: String(job.containerId) }
+  );
 
   return ok(res, { job });
 });
@@ -103,6 +127,11 @@ export const completeJob = asyncHandler(async (req: Request, res: Response) => {
     action: 'delivery_completed',
     description: `Container ${container?.containerNumber || ''} was marked delivered`.trim(),
     details: { transportAssignmentId: job._id },
+  });
+
+  await pushToAgencyUser(job.assignedByUserId, 'Container delivered', `${container?.containerNumber || 'A container'} was delivered`, {
+    screen: 'ContainerCaseFile',
+    containerId: String(job.containerId),
   });
 
   return ok(res, { job });
@@ -213,6 +242,8 @@ const assignDriverSchema = z.object({
   requiredDate: z.string().datetime().optional(),
   contactName: z.string().trim().optional(),
   contactPhone: z.string().trim().optional(),
+  fee: z.number().nonnegative().optional(),
+  currency: z.string().trim().length(3).optional(),
 });
 
 export const assignDriver = asyncHandler(async (req: Request, res: Response) => {
@@ -230,12 +261,17 @@ export const assignDriver = asyncHandler(async (req: Request, res: Response) => 
     requiredDate: input.requiredDate ? new Date(input.requiredDate) : undefined,
     contactName: input.contactName,
     contactPhone: input.contactPhone,
+    fee: input.fee,
+    currency: input.currency,
+    assignedByUserId: req.auth!.userId,
     status: 'pending',
   });
 
   container.status = 'Transport Required';
   container.transportAssignmentId = assignment._id;
   await container.save();
+
+  await pushToDriver(input.driverId, 'New job', `${container.containerNumber}: ${input.pickupLocation} → ${input.destination}`, { screen: 'JobDetail', jobId: String(assignment._id) });
 
   return ok(res, { assignment }, 201);
 });
@@ -269,4 +305,77 @@ export const rateDriver = asyncHandler(async (req: Request, res: Response) => {
   await DriverModel.updateOne({ _id: assignment.driverId }, { $inc: { ratingTotal: input.stars, ratingCount: 1 } });
 
   return ok(res, { assignment });
+});
+
+
+const verificationRequestSchema = z.object({
+  licenseDocumentUrl: z.string().url(),
+  location: z.string().trim().min(1).optional(),
+  yearsExperience: z.number().int().min(0).max(70).optional(),
+});
+
+// A new driver starts 'unverified' and agencies only ever see 'verified'
+// drivers (fetchCandidateDrivers), so without a way to ask for verification a
+// driver could never receive work. This puts the account in the platform
+// admin's review queue with the licence the driver uploaded.
+export const requestVerification = asyncHandler(async (req: Request, res: Response) => {
+  const input = verificationRequestSchema.parse(req.body);
+  const driver = await DriverModel.findById(req.auth!.driverId);
+  if (!driver) throw AppError.notFound('Driver not found');
+  if (driver.verificationStatus === 'verified') throw AppError.badRequest('This account is already verified');
+  if (driver.verificationStatus === 'pending') throw AppError.badRequest('Verification is already under review');
+
+  const vehicleCount = await VehicleModel.countDocuments({ driverId: driver._id, isActive: true });
+  if (vehicleCount === 0) throw AppError.badRequest('Add at least one vehicle before requesting verification', 'VEHICLE_REQUIRED');
+
+  driver.licenseDocumentUrl = input.licenseDocumentUrl;
+  if (input.location) driver.location = input.location;
+  if (input.yearsExperience !== undefined) driver.yearsExperience = input.yearsExperience;
+  driver.verificationStatus = 'pending';
+  await driver.save();
+  return ok(res, { driver: driverSummary(driver) });
+});
+
+
+const pushTokenSchema = z.object({ pushToken: z.string().min(1).nullable() });
+
+export const setDriverPushToken = asyncHandler(async (req: Request, res: Response) => {
+  const { pushToken } = pushTokenSchema.parse(req.body);
+  await DriverModel.updateOne({ _id: req.auth!.driverId }, pushToken ? { $set: { pushToken } } : { $unset: { pushToken: '' } });
+  return ok(res, { message: 'Push token updated' });
+});
+
+const driverPrefsSchema = z.object({ jobAlerts: z.boolean() });
+
+export const getDriverNotificationPrefs = asyncHandler(async (req: Request, res: Response) => {
+  const driver = await DriverModel.findById(req.auth!.driverId);
+  if (!driver) throw AppError.notFound('Driver not found');
+  return ok(res, { prefs: { jobAlerts: driver.notificationPrefs?.jobAlerts !== false }, pushRegistered: !!driver.pushToken });
+});
+
+export const setDriverNotificationPrefs = asyncHandler(async (req: Request, res: Response) => {
+  const { jobAlerts } = driverPrefsSchema.parse(req.body);
+  await DriverModel.updateOne({ _id: req.auth!.driverId }, { $set: { 'notificationPrefs.jobAlerts': jobAlerts } });
+  return ok(res, { prefs: { jobAlerts } });
+});
+
+// Fees the agency agreed for delivered jobs. These are agreed amounts, not
+// proof that the agency has paid: there is no payment record between an
+// agency and a driver in the system, so nothing here claims "paid".
+export const getEarnings = asyncHandler(async (req: Request, res: Response) => {
+  const jobs = await TransportAssignmentModel.find({ driverId: req.auth!.driverId, status: 'delivered' })
+    .populate('containerId', 'containerNumber')
+    .sort({ updatedAt: -1 });
+
+  const summary = summarizeEarnings(
+    jobs.map((job) => ({
+      id: String(job._id),
+      containerNumber: (job.containerId as unknown as { containerNumber?: string } | null)?.containerNumber || '—',
+      fee: job.fee,
+      currency: job.currency,
+      completedAt: job.proofOfDelivery?.completedAt || job.updatedAt,
+    }))
+  );
+
+  return ok(res, summary);
 });

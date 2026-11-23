@@ -15,9 +15,22 @@ export interface LabeledOption {
   label: string;
 }
 
+export interface AgencyRules {
+  requiredDocumentTypes: string[];
+  attentionWindowDays: number;
+  defaultFreeStorageDays: number;
+  defaultGraceDays: number;
+}
+
 export interface AgencySettings {
   statusPipeline: LabeledOption[];
   documentTypes: LabeledOption[];
+  rules: AgencyRules;
+}
+
+export async function updateAgencyRules(change: Partial<AgencyRules>) {
+  const { data } = await api.patch<ApiEnvelope<{ rules: AgencyRules; updatedContainers: number }>>('/agency/rules', change);
+  return data.data;
 }
 
 export async function fetchAgencySettings() {

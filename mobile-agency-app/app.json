@@ -32,6 +32,12 @@
         }
       ],
       [
+        "react-native-document-scanner-plugin",
+        {
+          "cameraPermission": "CargoFlow uses the camera to scan documents."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "CargoFlow accesses your photos so you can attach scanned or photographed documents to a container."
@@ -44,6 +50,10 @@
           "color": "#F5820D"
         }
       ],
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-sqlite",
+      "expo-status-bar",
       [
         "react-native-google-mobile-ads",
         {

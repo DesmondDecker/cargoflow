@@ -9,6 +9,18 @@ import { DemurrageTermsScreen } from '../screens/settings/DemurrageTermsScreen';
 import { AddDemurrageTermScreen } from '../screens/settings/AddDemurrageTermScreen';
 import { EditAgencyProfileScreen } from '../screens/settings/EditAgencyProfileScreen';
 import { EditLabelsScreen } from '../screens/settings/EditLabelsScreen';
+import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
+import { AppPreferencesScreen } from '../screens/settings/AppPreferencesScreen';
+import { RulesScreen } from '../screens/settings/RulesScreen';
+import { StorageBookingsScreen } from '../screens/storage/StorageBookingsScreen';
+import { ReportsScreen } from '../screens/reports/ReportsScreen';
+import { TeamScreen } from '../screens/settings/TeamScreen';
+import { ChangeAgencyPasswordScreen } from '../screens/settings/ChangeAgencyPasswordScreen';
+import { ChangeMyPinScreen } from '../screens/settings/ChangeMyPinScreen';
+import { ResetPinScreen } from '../screens/settings/ResetPinScreen';
+import { CustomsSubmissionsScreen } from '../screens/customs/CustomsSubmissionsScreen';
+import { CustomsSubmissionScreen } from '../screens/customs/CustomsSubmissionScreen';
+import { DocumentsNavigator } from './DocumentsNavigator';
 
 const Stack = createNativeStackNavigator<MoreStackParamList>();
 
@@ -19,6 +31,18 @@ export function MoreNavigator() {
       {/* Nested navigators: each manages its own header, so hide this stack's header for them */}
       <Stack.Screen name="Importers" component={ImportersNavigator} options={{ headerShown: false }} />
       <Stack.Screen name="Guides" component={GuidesNavigator} options={{ headerShown: false }} />
+      <Stack.Screen name="Documents" component={DocumentsNavigator} options={{ headerShown: false }} />
+      <Stack.Screen name="Rules" component={RulesScreen} options={{ title: 'Rules & Deadlines' }} />
+      <Stack.Screen name="StorageBookings" component={StorageBookingsScreen} options={{ title: 'Storage bookings' }} />
+      <Stack.Screen name="Reports" component={ReportsScreen} options={{ title: 'Reports' }} />
+      <Stack.Screen name="Team" component={TeamScreen} options={{ title: 'Users & Permissions' }} />
+      <Stack.Screen name="ChangeAgencyPassword" component={ChangeAgencyPasswordScreen} options={{ title: 'Agency password' }} />
+      <Stack.Screen name="ChangeMyPin" component={ChangeMyPinScreen} options={{ title: 'Change my PIN' }} />
+      <Stack.Screen name="ResetPin" component={ResetPinScreen} options={{ title: 'Reset PIN' }} />
+      <Stack.Screen name="CustomsSubmissions" component={CustomsSubmissionsScreen} options={{ title: 'Customs verification' }} />
+      <Stack.Screen name="CustomsSubmission" component={CustomsSubmissionScreen} options={{ title: 'Customs submission' }} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
+      <Stack.Screen name="AppPreferences" component={AppPreferencesScreen} options={{ title: 'App Preferences' }} />
       <Stack.Screen name="DemurrageTerms" component={DemurrageTermsScreen} options={{ title: 'Grace Periods' }} />
       <Stack.Screen
         name="AddDemurrageTerm"

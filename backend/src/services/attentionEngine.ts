@@ -12,8 +12,10 @@ export interface AttentionResult {
 export function computeAttention(
   container: Pick<ContainerDoc, 'status' | 'deadlines' | 'requiredDocumentTypes'>,
   documentTypesPresent: Set<string>,
-  now = new Date()
+  now = new Date(),
+  options?: { windowDays?: number } // how many days ahead a deadline starts to need attention (agency rule; default 3)
 ): AttentionResult {
+  const windowDays = options?.windowDays ?? 3;
   const reasons: string[] = [];
   let level: 'urgent' | 'attention' | 'normal' = 'normal';
 
@@ -23,9 +25,9 @@ export function computeAttention(
     level = 'urgent';
   }
 
-  const dueSoon = container.deadlines?.find((d) => d.status === 'pending' && d.dueDate.getTime() - now.getTime() < 3 * 24 * 60 * 60 * 1000);
+  const dueSoon = container.deadlines?.find((d) => d.status === 'pending' && d.dueDate.getTime() - now.getTime() < windowDays * 24 * 60 * 60 * 1000);
   if (dueSoon && level !== 'urgent') {
-    reasons.push(`${dueSoon.ruleName} due within 3 days`);
+    reasons.push(`${dueSoon.ruleName} due within ${windowDays} ${windowDays === 1 ? 'day' : 'days'}`);
     level = 'attention';
   }
 

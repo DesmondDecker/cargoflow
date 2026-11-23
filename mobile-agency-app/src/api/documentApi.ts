@@ -54,3 +54,8 @@ export async function uploadFileToPresignedUrl(uploadUrl: string, fileUri: strin
     throw new Error('Upload failed — please try again.');
   }
 }
+
+export async function reviewDocument(id: string, status: 'verified' | 'pending_review') {
+  const { data } = await api.post<ApiEnvelope<{ document: CargoDocument }>>(`/documents/${id}/review`, { status });
+  return data.data.document;
+}

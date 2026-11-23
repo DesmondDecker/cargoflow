@@ -9,23 +9,41 @@ import { Button } from '../../components/Button';
 import { colors, radius, spacing, typography } from '../../theme/theme';
 import { requestUploadUrl, uploadFileToPresignedUrl, registerDocument } from '../../api/documentApi';
 import { apiErrorMessage } from '../../api/client';
+import { enqueueOutbox, isNetworkError } from '../../offline/outbox';
 import { ContainersStackParamList, DashboardStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ContainersStackParamList | DashboardStackParamList, 'DocumentScanner'>;
 
 /**
- * Multi-page document capture: take a photo per page with the camera,
- * reorder/remove pages, then assemble everything into a single PDF and
- * upload that — much closer to "scan a 5-page B/L" than a single gallery
- * photo. What this does NOT do (would need a native document-scanner SDK
- * beyond Expo's managed workflow, or a paid third-party library):
- * automatic edge detection, perspective correction, or auto-cropping.
- * Pages are uploaded exactly as the camera captured them.
+ * Multi-page document scanning. "Scan document" opens the device's native
+ * scanner, which finds the page edges, corrects the perspective and crops
+ * automatically (Apple's document camera on iOS, Google's ML Kit scanner on
+ * Android). That needs a development or production build: the native module
+ * is not in Expo Go, so there the app falls back to plain camera capture
+ * ("Capture page"), which uploads each page exactly as the camera took it.
+ * Pages from either source are assembled into one PDF and uploaded.
  */
 export function DocumentScannerScreen({ route, navigation }: Props) {
   const { containerId, importerId, blId, documentType } = route.params;
   const [pages, setPages] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
+
+  const scanDocument = async () => {
+    try {
+      const { default: DocumentScanner, ScanDocumentResponseStatus } =
+        require('react-native-document-scanner-plugin') as typeof import('react-native-document-scanner-plugin');
+      const { scannedImages, status } = await DocumentScanner.scanDocument({ croppedImageQuality: 85, maxNumDocuments: 24 });
+      if (status === ScanDocumentResponseStatus.Success && scannedImages?.length) {
+        const uris = scannedImages.map((p) => (p.startsWith('file://') || p.startsWith('content://') ? p : `file://${p}`));
+        setPages((prev) => [...prev, ...uris]);
+      }
+    } catch {
+      Alert.alert(
+        'Scanner not available',
+        "The automatic scanner needs the installed CargoFlow app (it isn't available in Expo Go). Use Capture page instead.",
+      );
+    }
+  };
 
   const capturePage = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -71,8 +89,22 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
       const { uri: pdfUri } = await Print.printToFileAsync({ html, base64: false });
 
       const fileName = `${documentType.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
-      const { uploadUrl, fileKey } = await requestUploadUrl(fileName, 'application/pdf', containerId);
-      await uploadFileToPresignedUrl(uploadUrl, pdfUri, 'application/pdf');
+      let fileKey: string;
+      try {
+        const upload = await requestUploadUrl(fileName, 'application/pdf', containerId);
+        fileKey = upload.fileKey;
+        await uploadFileToPresignedUrl(upload.uploadUrl, pdfUri, 'application/pdf');
+      } catch (uploadErr) {
+        if (!isNetworkError(uploadErr)) throw uploadErr;
+        // No signal: keep the finished PDF on the phone and upload it when online.
+        const dir = `${FileSystem.documentDirectory}outbox/`;
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        const saved = `${dir}${fileName}`;
+        await FileSystem.copyAsync({ from: pdfUri, to: saved });
+        enqueueOutbox('document_upload', { fileUri: saved, fileName, mimeType: 'application/pdf', containerId, importerId, blId, documentType, pageCount: pages.length });
+        Alert.alert('Saved on this phone', `${documentType} will upload automatically when you are back online. Keep CargoFlow installed until then.`, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        return;
+      }
       await registerDocument({
         documentType,
         importerId,
@@ -98,7 +130,7 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Scan {documentType}</Text>
         <Text style={styles.headerSubtitle}>
-          {pages.length === 0 ? 'Capture the first page' : `${pages.length} page${pages.length > 1 ? 's' : ''} captured`}
+          {pages.length === 0 ? 'Scan the first page' : `${pages.length} page${pages.length > 1 ? 's' : ''} captured`}
         </Text>
       </View>
 
@@ -116,11 +148,12 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>No pages yet — tap "Capture Page" below.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>No pages yet. Tap "Scan document" below.</Text>}
       />
 
       <View style={styles.footer}>
-        <Button title="📷 Capture Page" variant="outline" onPress={capturePage} style={styles.captureButton} />
+        <Button title="Scan document (auto-crop)" onPress={scanDocument} style={styles.captureButton} />
+        <Button title="Capture page (camera)" variant="outline" onPress={capturePage} style={styles.captureButton} />
         <Button
           title={processing ? 'Preparing PDF…' : `Finish & Upload (${pages.length})`}
           onPress={finishAndUpload}

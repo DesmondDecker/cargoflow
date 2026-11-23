@@ -4,13 +4,14 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed:admin": "ts-node src/seed/seedPlatformAdmin.ts",
-    "seed:plans": "ts-node src/seed/seedSubscriptionPlans.ts"
+    "seed:plans": "ts-node src/seed/seedSubscriptionPlans.ts",
+    "reset:pin": "ts-node src/seed/resetUserPin.ts"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20",
@@ -22,12 +23,13 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.2",
     "mongoose": "^8.8.0",
     "morgan": "^1.10.0",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.5.0",
     "pdfkit": "^0.20.2",
-    "uuid": "^9.0.1",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -36,9 +38,8 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.9.0",
-    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",
-    "@types/uuid": "^9.0.8",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3",

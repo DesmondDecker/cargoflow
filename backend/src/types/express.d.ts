@@ -14,6 +14,11 @@ declare global {
         driverId?: string;
         warehouseId?: string;
         platformAdminId?: string;
+        platformAdminRole?: string;
+        // Customs / AGL staff signed in to the institution portal.
+        institutionUserId?: string;
+        institution?: 'customs' | 'agl';
+        institutionSupervisor?: boolean;
       };
     }
   }

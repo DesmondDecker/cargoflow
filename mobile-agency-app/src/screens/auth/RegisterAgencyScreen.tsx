@@ -20,6 +20,8 @@ export function RegisterAgencyScreen({ navigation }: Props) {
   const [ownerPhone, setOwnerPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const onSubmit = async () => {
@@ -37,16 +39,25 @@ export function RegisterAgencyScreen({ navigation }: Props) {
       setValidationError('Passwords do not match.');
       return;
     }
+    if (!/^\d{6}$/.test(pin)) {
+      setValidationError('Your PIN must be exactly 6 digits.');
+      return;
+    }
+    if (pin !== confirmPin) {
+      setValidationError('The two PINs do not match.');
+      return;
+    }
     try {
       await registerAgency({
         agencyName: agencyName.trim(),
         ownerName: ownerName.trim(),
         ownerPhone: ownerPhone.trim() || undefined,
         password,
+        pin,
       });
       Alert.alert(
         'Agency created',
-        'Your agency code is shown on the dashboard — share it, along with the password, with your staff so they can join.'
+        'Your agency code is shown on the dashboard — share it, along with the agency password, with your staff so they can join. You log in with your own PIN.'
       );
     } catch {
       // The store already captured the specific backend message in `error`.
@@ -60,7 +71,7 @@ export function RegisterAgencyScreen({ navigation }: Props) {
       <Text style={styles.title}>Register Your Agency</Text>
       <Text style={styles.subtitle}>
         Free to get started — no payment required. You'll become the agency owner and get a unique agency code to hand
-        out to staff along with the password you set here.
+        out to staff along with the agency password you set here (it only lets new staff join). You log in with your own PIN.
       </Text>
 
       <Field label="Agency / Company Name" placeholder="e.g. ABC Clearing Agents" value={agencyName} onChangeText={setAgencyName} />
@@ -68,6 +79,8 @@ export function RegisterAgencyScreen({ navigation }: Props) {
       <Field label="Your Phone Number (optional)" placeholder="e.g. 076123456" keyboardType="phone-pad" value={ownerPhone} onChangeText={setOwnerPhone} />
       <Field label="Set Agency Password" placeholder="At least 8 characters" secureTextEntry value={password} onChangeText={setPassword} />
       <Field label="Confirm Password" placeholder="Re-enter password" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+      <Field label="Your Login PIN (6 digits)" placeholder="6 digits" secureTextEntry keyboardType="number-pad" maxLength={6} value={pin} onChangeText={setPin} />
+      <Field label="Confirm Your PIN" placeholder="Re-enter PIN" secureTextEntry keyboardType="number-pad" maxLength={6} value={confirmPin} onChangeText={setConfirmPin} />
 
       {displayedError ? <Text style={styles.error}>{displayedError}</Text> : null}
 

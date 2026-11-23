@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/apiResponse';
 import { AppError } from '../utils/AppError';
@@ -30,7 +30,7 @@ export const createPayment = asyncHandler(async (req: Request, res: Response) =>
     currency: plan.currency,
     paymentMethod: input.paymentMethod,
     merchantNumber: process.env.MERCHANT_NUMBER_PLACEHOLDER || 'SET_MERCHANT_NUMBER',
-    referenceCode: uuidv4().slice(0, 8).toUpperCase(),
+    referenceCode: randomUUID().slice(0, 8).toUpperCase(),
     payerPhoneNumber: input.payerPhoneNumber,
     status: 'pending',
   });

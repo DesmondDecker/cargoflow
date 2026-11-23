@@ -3,10 +3,11 @@ import {
   fetchPlatformAdmins,
   createPlatformAdmin,
   deactivatePlatformAdmin,
+  setPlatformAdminRole,
   changeOwnPassword,
 } from '../api/adminApi';
 import { apiErrorMessage } from '../api/client';
-import { PlatformAdmin } from '../types';
+import { ADMIN_ROLE_LABELS, AdminRole, PlatformAdmin } from '../types';
 import { useAuthStore } from '../store/authStore';
 
 function formatDate(value?: string): string {
@@ -23,6 +24,7 @@ export function TeamPage() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState<AdminRole>('viewer');
   const [creating, setCreating] = useState(false);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
@@ -33,7 +35,13 @@ export function TeamPage() {
   const [ownPasswordSuccess, setOwnPasswordSuccess] = useState<string | null>(null);
   const [ownPasswordError, setOwnPasswordError] = useState<string | null>(null);
 
+  const isSuper = currentAdmin?.role === 'super_admin';
+
   const load = () => {
+    if (!isSuper) {
+      setLoading(false); // only a super admin may list or manage other admins
+      return;
+    }
     setLoading(true);
     fetchPlatformAdmins()
       .then(setAdmins)
@@ -41,14 +49,14 @@ export function TeamPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(load, [isSuper]);
 
   const onCreate = async () => {
     if (!newName.trim() || !newEmail.trim() || newPassword.length < 8) return;
     setCreating(true);
     setError(null);
     try {
-      await createPlatformAdmin(newName.trim(), newEmail.trim(), newPassword);
+      await createPlatformAdmin(newName.trim(), newEmail.trim(), newPassword, newRole);
       setCreateSuccess(`Admin account created for ${newEmail}. Share the password with them directly.`);
       setNewName('');
       setNewEmail('');
@@ -64,6 +72,15 @@ export function TeamPage() {
   const onDeactivate = async (id: string) => {
     try {
       await deactivatePlatformAdmin(id);
+      load();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  };
+
+  const onChangeRole = async (id: string, role: AdminRole) => {
+    try {
+      await setPlatformAdminRole(id, role);
       load();
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -122,6 +139,7 @@ export function TeamPage() {
           </button>
         </div>
 
+        {isSuper ? (
         <div className="card">
           <h2 className="card-title">Add a Team Member</h2>
           <div className="field">
@@ -133,6 +151,14 @@ export function TeamPage() {
             <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
           </div>
           <div className="field">
+            <label>Role</label>
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value as AdminRole)}>
+              {(Object.keys(ADMIN_ROLE_LABELS) as AdminRole[]).map((r) => (
+                <option key={r} value={r}>{ADMIN_ROLE_LABELS[r]}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
             <label>Temporary Password</label>
             <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 8 characters" />
           </div>
@@ -141,10 +167,12 @@ export function TeamPage() {
             {creating ? 'Creating…' : 'Create Admin Account'}
           </button>
         </div>
+        ) : null}
       </div>
 
       {error && <p className="error-text">{error}</p>}
 
+      {isSuper ? (
       <div className="card">
         <h2 className="card-title">Admin Accounts</h2>
         {loading ? (
@@ -155,6 +183,7 @@ export function TeamPage() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Role</th>
                 <th>Status</th>
                 <th>Last Login</th>
                 <th></th>
@@ -162,16 +191,27 @@ export function TeamPage() {
             </thead>
             <tbody>
               {admins.map((admin) => (
-                <tr key={admin._id}>
+                <tr key={admin.id ?? admin._id}>
                   <td>{admin.name}</td>
                   <td>{admin.email}</td>
+                  <td>
+                    {(admin.id ?? admin._id) !== currentAdmin?.id ? (
+                      <select value={admin.role ?? 'super_admin'} onChange={(e) => onChangeRole((admin.id ?? admin._id) as string, e.target.value as AdminRole)}>
+                        {(Object.keys(ADMIN_ROLE_LABELS) as AdminRole[]).map((r) => (
+                          <option key={r} value={r}>{r.replace('_', ' ')}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      (admin.role ?? 'super_admin').replace('_', ' ')
+                    )}
+                  </td>
                   <td>
                     <span className={`badge status-${admin.isActive ? 'active' : 'canceled'}`}>{admin.isActive ? 'Active' : 'Deactivated'}</span>
                   </td>
                   <td>{formatDate(admin.lastLoginAt)}</td>
                   <td>
-                    {admin.isActive && admin._id !== currentAdmin?.id && (
-                      <button className="btn btn-danger btn-sm" onClick={() => admin._id && onDeactivate(admin._id)}>
+                    {admin.isActive && (admin.id ?? admin._id) !== currentAdmin?.id && (
+                      <button className="btn btn-danger btn-sm" onClick={() => onDeactivate((admin.id ?? admin._id) as string)}>
                         Deactivate
                       </button>
                     )}
@@ -182,6 +222,7 @@ export function TeamPage() {
           </table>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

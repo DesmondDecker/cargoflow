@@ -8,7 +8,7 @@ import { Schema, model, Types } from 'mongoose';
 export interface RefreshTokenDoc {
   _id: Types.ObjectId;
   tokenHash: string;
-  audience: 'agency-app' | 'driver-app' | 'admin-app' | 'warehouse-app';
+  audience: 'agency-app' | 'driver-app' | 'admin-app' | 'warehouse-app' | 'institution-portal';
   subjectId: Types.ObjectId; // User / Driver / PlatformAdmin id
   agencyId?: Types.ObjectId; // set for agency-app tokens; used for bulk revoke on password change
   deviceId?: string;
@@ -19,7 +19,7 @@ export interface RefreshTokenDoc {
 
 const refreshTokenSchema = new Schema<RefreshTokenDoc>({
   tokenHash: { type: String, required: true, unique: true, index: true },
-  audience: { type: String, enum: ['agency-app', 'driver-app', 'admin-app', 'warehouse-app'], required: true },
+  audience: { type: String, enum: ['agency-app', 'driver-app', 'admin-app', 'warehouse-app', 'institution-portal'], required: true },
   subjectId: { type: Schema.Types.ObjectId, required: true, index: true },
   agencyId: { type: Schema.Types.ObjectId, ref: 'Agency', index: true },
   deviceId: { type: String },

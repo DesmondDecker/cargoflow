@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { fetchDrivers, resetDriverPassword } from '../api/adminApi';
+import { fetchDrivers, resetDriverPassword, setDriverSponsorship, setDriverVerification } from '../api/adminApi';
 import { apiErrorMessage } from '../api/client';
 import { Driver } from '../types';
 import { SetPasswordModal } from '../components/SetPasswordModal';
+import { SponsorModal } from '../components/SponsorModal';
 
 function formatDate(value?: string): string {
   if (!value) return '—';
@@ -28,6 +29,22 @@ export function DriversPage() {
   };
 
   useEffect(() => load(), []);
+
+  const [sponsorTarget, setSponsorTarget] = useState<Driver | null>(null);
+
+  const setVerification = async (driver: Driver, status: Driver['verificationStatus']) => {
+    setBusyId(driver._id);
+    setError(null);
+    try {
+      await setDriverVerification(driver._id, status);
+      setSuccessMessage(`${driver.name} is now ${status}.`);
+      load(search);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const applyPasswordReset = async (newPassword: string) => {
     if (!passwordTarget) return;
@@ -97,7 +114,25 @@ export function DriversPage() {
                     </span>
                   </td>
                   <td>{formatDate(driver.createdAt)}</td>
-                  <td>
+                  <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {driver.licenseDocumentUrl ? (
+                      <a className="btn btn-outline btn-sm" href={driver.licenseDocumentUrl} target="_blank" rel="noreferrer">
+                        View licence
+                      </a>
+                    ) : null}
+                    {driver.verificationStatus !== 'verified' ? (
+                      <button className="btn btn-outline btn-sm" disabled={busyId === driver._id} onClick={() => setVerification(driver, 'verified')}>
+                        Verify
+                      </button>
+                    ) : null}
+                    {driver.verificationStatus !== 'rejected' ? (
+                      <button className="btn btn-outline btn-sm" disabled={busyId === driver._id} onClick={() => setVerification(driver, 'rejected')}>
+                        Reject
+                      </button>
+                    ) : null}
+                    <button className="btn btn-outline btn-sm" disabled={busyId === driver._id} onClick={() => setSponsorTarget(driver)}>
+                      {driver.sponsored ? `Boosted to ${formatDate(driver.sponsoredUntil ?? undefined)}` : 'Sponsor'}
+                    </button>
                     <button className="btn btn-outline btn-sm" disabled={busyId === driver._id} onClick={() => setPasswordTarget(driver)}>
                       Reset Password
                     </button>
@@ -108,6 +143,29 @@ export function DriversPage() {
           </table>
         )}
       </div>
+
+      {sponsorTarget && (
+        <SponsorModal
+          name={sponsorTarget.name}
+          currentlySponsored={!!sponsorTarget.sponsored}
+          busy={busyId === sponsorTarget._id}
+          onCancel={() => setSponsorTarget(null)}
+          onConfirm={async (on, until) => {
+            const t = sponsorTarget;
+            setBusyId(t._id);
+            try {
+              await setDriverSponsorship(t._id, on, until);
+              setSuccessMessage(on ? `${t.name} is boosted until ${formatDate(until)}.` : `${t.name} is no longer boosted.`);
+              load(search);
+            } catch (err) {
+              setError(apiErrorMessage(err));
+            } finally {
+              setBusyId(null);
+              setSponsorTarget(null);
+            }
+          }}
+        />
+      )}
 
       {passwordTarget && (
         <SetPasswordModal

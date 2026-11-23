@@ -4,16 +4,18 @@
 export class AppError extends Error {
   statusCode: number;
   code: string;
+  details?: unknown; // e.g. per-field validation errors, passed through to the client
 
-  constructor(message: string, statusCode = 400, code = 'BAD_REQUEST') {
+  constructor(message: string, statusCode = 400, code = 'BAD_REQUEST', details?: unknown) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
+    this.details = details;
     Object.setPrototypeOf(this, AppError.prototype);
   }
 
-  static badRequest(message: string, code = 'BAD_REQUEST') {
-    return new AppError(message, 400, code);
+  static badRequest(message: string, code = 'BAD_REQUEST', details?: unknown) {
+    return new AppError(message, 400, code, details);
   }
   static unauthorized(message = 'Unauthorized', code = 'UNAUTHORIZED') {
     return new AppError(message, 401, code);

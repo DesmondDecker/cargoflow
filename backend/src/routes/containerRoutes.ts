@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAgencyAuth } from '../middleware/auth';
 import * as ctrl from '../controllers/containerController';
 import * as transportCtrl from '../controllers/driverController';
+import * as letterCtrl from '../controllers/letterController';
 import * as storageCtrl from '../controllers/warehouseController';
 
 const router = Router();
@@ -11,13 +12,19 @@ router.use(requireAgencyAuth);
 router.get('/dashboard', ctrl.fetchDashboardStats);
 router.get('/', ctrl.fetchContainers);
 router.post('/', ctrl.createContainer);
+router.get('/tracking-sources', ctrl.getTrackingSources);
 router.get('/:id', ctrl.fetchContainerCaseFile);
 router.patch('/:id/details', ctrl.updateContainerDetails);
 router.patch('/:id/status', ctrl.changeContainerStatus);
 router.patch('/:id/dates', ctrl.updateContainerDates);
 router.patch('/:id/shipping-line', ctrl.setShippingLine);
 router.post('/:id/refresh-tracking', ctrl.refreshContainerTracking);
+router.post('/:id/paste-tracking', ctrl.applyPastedTracking);
+router.post('/:id/preview-tracking', ctrl.previewPastedTracking);
+router.post('/:id/save-tracking', ctrl.saveReviewedTracking);
 
+router.get('/:id/letters', letterCtrl.listContainerLetters);
+router.post('/:id/letters', letterCtrl.createLetter);
 router.get('/:id/transport/candidates', transportCtrl.fetchCandidateDrivers);
 router.post('/:id/transport/assign', transportCtrl.assignDriver);
 

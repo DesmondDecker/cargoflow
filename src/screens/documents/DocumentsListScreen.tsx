@@ -65,7 +65,7 @@ export function DocumentsListScreen() {
         ListEmptyComponent={
           !loading ? (
             <Text style={styles.empty}>No documents yet — add one from a container's case file.</Text>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => (
           <Card style={styles.card}>

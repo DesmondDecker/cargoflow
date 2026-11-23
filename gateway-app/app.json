@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "CargoFlow SMS Gateway",
+    "slug": "cargoflow-sms-gateway",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0B1F3A"
+    },
+    "android": {
+      "package": "com.summittechnologies.cargoflow.smsgateway",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1F3A"
+      },
+      "permissions": [
+        "android.permission.RECEIVE_SMS",
+        "android.permission.READ_SMS",
+        "android.permission.INTERNET"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-status-bar"
+    ]
+  }
+}

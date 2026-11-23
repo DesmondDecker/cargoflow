@@ -69,12 +69,44 @@ export interface Driver {
   name: string;
   phone: string;
   verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
+  licenseDocumentUrl?: string;
+  location?: string;
+  yearsExperience?: number;
   availability: boolean;
   isActive: boolean;
   ratingAverage: number;
   ratingCount: number;
+  sponsored?: boolean;
+  sponsoredUntil?: string | null;
   createdAt: string;
 }
+
+export interface Warehouse {
+  _id: string;
+  businessName: string;
+  ownerName: string;
+  phone: string;
+  location?: string;
+  capacityUnit?: string;
+  totalCapacity?: number;
+  availableCapacity?: number;
+  verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
+  isActive: boolean;
+  ratingAverage: number;
+  ratingCount: number;
+  sponsored?: boolean;
+  sponsoredUntil?: string | null;
+  createdAt: string;
+}
+
+export type AdminRole = 'super_admin' | 'finance' | 'support' | 'viewer';
+
+export const ADMIN_ROLE_LABELS: Record<AdminRole, string> = {
+  super_admin: 'Super admin — everything',
+  finance: 'Finance — payments, expenses, plans',
+  support: 'Support — agencies, drivers, warehouses, customs/AGL users',
+  viewer: 'Viewer — read only',
+};
 
 export interface PlatformAdmin {
   _id?: string;
@@ -82,6 +114,7 @@ export interface PlatformAdmin {
   name: string;
   email: string;
   isActive?: boolean;
+  role?: AdminRole;
   lastLoginAt?: string;
   createdAt?: string;
 }

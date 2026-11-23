@@ -23,6 +23,14 @@ export interface CargoDocumentDoc {
   containerId?: Types.ObjectId;
   versions: DocumentVersionEntry[];
   currentVersion: number;
+  // Has someone at the agency checked this against the paperwork? A document
+  // starts as pending_review and a person marks it verified (recorded with who
+  // and when). Uploading a new version puts it back to pending_review, because
+  // the file that was checked is no longer the current one.
+  reviewStatus: 'pending_review' | 'verified';
+  reviewedAt?: Date;
+  reviewedByName?: string;
+  reviewedByUserId?: Types.ObjectId;
   deletedAt?: Date | null; // soft-delete only
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +56,10 @@ const cargoDocumentSchema = new Schema<CargoDocumentDoc>(
       },
     ],
     currentVersion: { type: Number, default: 1 },
+    reviewStatus: { type: String, enum: ['pending_review', 'verified'], default: 'pending_review' },
+    reviewedAt: Date,
+    reviewedByName: String,
+    reviewedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }

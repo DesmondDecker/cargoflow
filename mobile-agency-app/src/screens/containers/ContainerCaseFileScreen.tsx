@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/Screen';
@@ -7,8 +7,14 @@ import { Card } from '../../components/Card';
 import { AttentionBadge } from '../../components/AttentionBadge';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
+import { CarrierTrackingModal } from '../../components/CarrierTrackingModal';
+import { CarrierPickerModal } from '../../components/CarrierPickerModal';
+import { TrackingReviewModal, ReviewedTracking } from '../../components/TrackingReviewModal';
+import axios from 'axios';
+import { findCarrier } from '../../constants/carriers';
+import { openMoreScreen } from '../../utils/navigation';
 import { colors, spacing, typography } from '../../theme/theme';
-import { fetchContainerCaseFile, refreshContainerTracking, changeContainerStatus, updateContainerDetails } from '../../api/containerApi';
+import { fetchContainerCaseFile, refreshContainerTracking, changeContainerStatus, updateContainerDetails, pasteContainerTracking, setContainerShippingLine, previewContainerTracking, saveReviewedTracking, TrackingProposal } from '../../api/containerApi';
 import { fetchAgencySettings } from '../../api/agencyApi';
 import { apiErrorMessage } from '../../api/client';
 import { ContainerCaseFile } from '../../types/api';
@@ -18,6 +24,16 @@ import { upsertSingleContainer } from '../../offline/containerCache';
 import { getIsOnline } from '../../offline/syncEngine';
 
 type Props = NativeStackScreenProps<ContainersStackParamList | DashboardStackParamList, 'ContainerCaseFile'>;
+
+function formatUtcDate(value?: string): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+function formatUtcDateTime(value?: string): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
+}
 
 function formatDate(value?: string): string {
   if (!value) return '—';
@@ -30,6 +46,17 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pasting, setPasting] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [trackOpen, setTrackOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [proposal, setProposal] = useState<TrackingProposal | null>(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [pickerSaving, setPickerSaving] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const [detailsEditing, setDetailsEditing] = useState(false);
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailValues, setDetailValues] = useState({ containerNumber: '', shippingLine: '', vessel: '' });
@@ -100,6 +127,74 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
       setError(apiErrorMessage(err));
     } finally {
       setTrackingLoading(false);
+    }
+  };
+
+  // Maersk's result is read by an exact parser and saved straight away. For any
+  // other carrier (or if the exact parser can't read the text) the text is read
+  // with generic heuristics and shown to the user to confirm before saving.
+  const openReview = async (text: string) => {
+    setProposal(await previewContainerTracking(containerId, text));
+    setReviewError(null);
+    setPasteOpen(false);
+    setTrackOpen(false);
+  };
+
+  const onPasteTracking = async (textOverride?: string) => {
+    setPasting(true);
+    setPasteError(null);
+    const text = textOverride ?? pasteText;
+    try {
+      if (trackCarrier && trackCarrier.captureMode === 'review') {
+        await openReview(text);
+        return;
+      }
+      try {
+        const result = await pasteContainerTracking(containerId, text);
+        setPasteOpen(false);
+        setTrackOpen(false);
+        setPasteText('');
+        await load();
+        if (result.warnings.length > 0) Alert.alert('Saved, but check this', result.warnings.join('\n\n'));
+      } catch (err) {
+        const code = axios.isAxiosError(err) ? (err.response?.data as { error?: { code?: string } } | undefined)?.error?.code : undefined;
+        if (code === 'TRACKING_PARSE_FAILED') await openReview(text);
+        else throw err;
+      }
+    } catch (err) {
+      setPasteError(apiErrorMessage(err));
+    } finally {
+      setPasting(false);
+    }
+  };
+
+  const onSaveReview = async (value: ReviewedTracking) => {
+    setReviewSaving(true);
+    setReviewError(null);
+    try {
+      await saveReviewedTracking(containerId, { carrierName: trackCarrier?.name || container.shippingLine || 'Carrier', ...value });
+      setProposal(null);
+      setPasteText('');
+      await load();
+    } catch (err) {
+      setReviewError(apiErrorMessage(err));
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
+  const onPickCarrier = async (carrierName: string) => {
+    setPickerSaving(true);
+    setPickerError(null);
+    try {
+      await setContainerShippingLine(containerId, carrierName);
+      await load();
+      setPickerOpen(false);
+      setTrackOpen(true);
+    } catch (err) {
+      setPickerError(apiErrorMessage(err));
+    } finally {
+      setPickerSaving(false);
     }
   };
 
@@ -184,6 +279,7 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
 
   if (!data) return null;
   const { container, documentChecklist, timeline } = data;
+  const trackCarrier = findCarrier(container.shippingLine || container.liveTracking?.carrierName);
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.orange} />}>
@@ -227,14 +323,35 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
           <Button title={detailsSaving ? 'Saving…' : 'Save details'} onPress={onSaveDetails} loading={detailsSaving} />
         </Card>
       ) : null}
-      {/* "Find a Driver" deliberately removed from the shipped app: there is
-          no working path for a real driver to ever get into the system (the
-          driver app's own repo has no source code, and no admin-side
-          endpoint creates a driver record either — see the session's own
-          verification of this). The screen, API client, and backend
-          endpoints are untouched and still real; this is just not wiring a
-          dead end in front of a customer. Re-add this button once driver
-          onboarding actually exists. */}
+      {container.status !== 'Delivered' && container.status !== 'Closed' ? (
+        <Button
+          title="🚚 Find a Driver"
+          variant="secondary"
+          onPress={() => navigation.navigate('FindDriver', { containerId })}
+          style={styles.findDriverButton}
+        />
+      ) : null}
+      <Button title="📦 Find Storage" variant="outline" onPress={() => navigation.navigate('FindStorage', { containerId })} style={styles.findDriverButton} />
+      <Button
+        title="🛃 Submit to Customs"
+        variant="outline"
+        onPress={() =>
+          openMoreScreen(navigation, 'CustomsSubmission', {
+            prefill: {
+              containerNumber: container.containerNumber,
+              billOfLadingNumber: (container.blId as { blNumber?: string } | undefined)?.blNumber ?? '',
+              shippingAgency: container.shippingLine ?? '',
+            },
+          })
+        }
+        style={styles.findDriverButton}
+      />
+      <Button
+        title="📄 Letters"
+        variant="outline"
+        onPress={() => navigation.navigate('ContainerLetters', { containerId })}
+        style={styles.findDriverButton}
+      />
       <Button
         title="💰 Finance"
         variant="secondary"
@@ -293,38 +410,139 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
       <SectionCard
         title="Live Tracking"
         action={
-          <Button
-            title={trackingLoading ? '...' : 'Refresh'}
-            variant="outline"
-            onPress={onRefreshTracking}
-            loading={trackingLoading}
-            style={styles.smallButton}
-          />
+          <View style={styles.trackingActions}>
+            <Button title="Track" onPress={() => (trackCarrier ? setTrackOpen(true) : setPickerOpen(true))} style={styles.smallButton} />
+            <Button
+              title={trackingLoading ? '...' : 'Refresh'}
+              variant="outline"
+              onPress={onRefreshTracking}
+              loading={trackingLoading}
+              style={styles.smallButton}
+            />
+          </View>
         }
       >
-        {container.liveTracking?.resolved ? (
+        {container.liveTracking?.resolved && container.liveTracking.source.startsWith('pasted:') ? (
+          <>
+            <Row label="Carrier" value={container.liveTracking.carrierName || '—'} />
+            <Row label="Latest event" value={container.liveTracking.latestEvent?.description || container.liveTracking.status || '—'} />
+            {container.liveTracking.latestEvent?.location ? (
+              <Row
+                label="Where"
+                value={[container.liveTracking.latestEvent.location, container.liveTracking.latestEvent.facility].filter(Boolean).join(' · ')}
+              />
+            ) : null}
+            {container.liveTracking.latestEvent?.at ? <Row label="When" value={formatUtcDateTime(container.liveTracking.latestEvent.at)} /> : null}
+            {container.liveTracking.originPlace || container.liveTracking.destinationPlace ? (
+              <Row label="Route" value={`${container.liveTracking.originPlace || '—'} → ${container.liveTracking.destinationPlace || '—'}`} />
+            ) : null}
+            {container.liveTracking.departedAt ? <Row label="Departed" value={formatUtcDate(container.liveTracking.departedAt)} /> : null}
+            {container.liveTracking.eta ? <Row label="Arrival" value={formatUtcDate(container.liveTracking.eta)} /> : null}
+            {container.liveTracking.eventsCompleted ? <Row label="Events" value={`${container.liveTracking.eventsCompleted} completed from origin`} /> : null}
+            <Text style={styles.muted}>
+              Recorded from the carrier page by {container.liveTracking.recordedByName || 'staff'}
+              {container.liveTracking.recordedAt ? ` on ${formatUtcDateTime(container.liveTracking.recordedAt)} UTC` : ''}
+              {container.liveTracking.carrierUpdatedNote ? ` (carrier page said updated ${container.liveTracking.carrierUpdatedNote})` : ''}.
+              Not live: paste again to update.
+            </Text>
+            <View style={styles.trackingActions}>
+              <Button title="Paste update" variant="outline" onPress={() => setPasteOpen(true)} style={styles.smallButton} />
+              {container.liveTracking.publicTrackingUrl ? (
+                <Button
+                  title={`Open ${container.liveTracking.carrierName || 'carrier'} site`}
+                  variant="outline"
+                  onPress={() => Linking.openURL(container.liveTracking!.publicTrackingUrl!)}
+                  style={styles.smallButton}
+                />
+              ) : null}
+            </View>
+          </>
+        ) : container.liveTracking?.resolved ? (
           <>
             <Row label="Carrier" value={container.liveTracking.carrierName || '—'} />
             <Row label="Status" value={container.liveTracking.status || '—'} />
             <Row label="Vessel" value={container.liveTracking.vesselName || '—'} />
             {container.liveTracking.eta ? <Row label="ETA" value={formatDate(container.liveTracking.eta)} /> : null}
+            <Button title="Paste from carrier page" variant="outline" onPress={() => setPasteOpen(true)} style={styles.smallButton} />
           </>
         ) : (
           <>
             <Text style={styles.muted}>
               {container.liveTracking?.status || 'Not confirmed yet — showing the identified shipping line above until a live tracking source is configured.'}
             </Text>
-            {container.liveTracking?.publicTrackingUrl ? (
-              <Button
-                title={`Check on ${container.liveTracking.carrierName || 'carrier'}'s site`}
-                variant="outline"
-                onPress={() => Linking.openURL(container.liveTracking!.publicTrackingUrl!)}
-                style={styles.smallButton}
-              />
-            ) : null}
+            <View style={styles.trackingActions}>
+              {container.liveTracking?.publicTrackingUrl ? (
+                <Button
+                  title={`Check on ${container.liveTracking.carrierName || 'carrier'}'s site`}
+                  variant="outline"
+                  onPress={() => Linking.openURL(container.liveTracking!.publicTrackingUrl!)}
+                  style={styles.smallButton}
+                />
+              ) : null}
+              <Button title="Paste from carrier page" variant="outline" onPress={() => setPasteOpen(true)} style={styles.smallButton} />
+            </View>
           </>
         )}
       </SectionCard>
+
+      {trackCarrier ? (
+        <CarrierTrackingModal
+          visible={trackOpen}
+          url={trackCarrier.trackingUrl(container.containerNumber)}
+          title={container.containerNumber}
+          carrierName={trackCarrier.name}
+          captureMode={trackCarrier.captureMode}
+          prefillsNumber={trackCarrier.prefillsNumber}
+          capturing={pasting}
+          captureError={pasteError}
+          onChangeCarrier={() => { setTrackOpen(false); setPickerOpen(true); }}
+          onClose={() => { setTrackOpen(false); setPasteError(null); }}
+          onCapture={(text) => onPasteTracking(text)}
+        />
+      ) : null}
+      <TrackingReviewModal
+        visible={proposal !== null}
+        carrierName={trackCarrier?.name || container.shippingLine || 'the carrier'}
+        proposal={proposal}
+        saving={reviewSaving}
+        error={reviewError}
+        onSave={onSaveReview}
+        onCancel={() => setProposal(null)}
+      />
+      <CarrierPickerModal
+        visible={pickerOpen}
+        current={trackCarrier?.name}
+        saving={pickerSaving}
+        error={pickerError}
+        onSelect={onPickCarrier}
+        onClose={() => { setPickerOpen(false); setPickerError(null); }}
+      />
+
+      <Modal visible={pasteOpen} animationType="slide" onRequestClose={() => setPasteOpen(false)}>
+        <KeyboardAvoidingView style={styles.pasteModal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.pasteContent}>
+            <Text style={styles.title}>Paste carrier tracking</Text>
+            <Text style={styles.muted}>
+              Open the carrier's tracking page, search this container or its BL, select the whole result and copy it, then paste it here. Maersk's tracking page is supported.
+            </Text>
+            <Field
+              label="Copied tracking text"
+              value={pasteText}
+              onChangeText={setPasteText}
+              multiline
+              numberOfLines={12}
+              textAlignVertical="top"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.pasteInput}
+              placeholder="BL number … container … Departs … Arrives … Latest event …"
+            />
+            {pasteError ? <Text style={styles.error}>{pasteError}</Text> : null}
+            <Button title="Save tracking" onPress={() => onPasteTracking()} loading={pasting} disabled={pasting || pasteText.trim().length < 20} />
+            <Button title="Cancel" variant="outline" onPress={() => { setPasteOpen(false); setPasteError(null); }} style={styles.pasteCancel} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <SectionCard title={`Documents (${documentChecklist.filter((d) => d.satisfied).length}/${documentChecklist.length})`}>
         <Text style={styles.docHint}>Tap a missing document to scan and upload it.</Text>
@@ -402,6 +620,11 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   sectionTitle: { ...typography.h3 },
   smallButton: { paddingVertical: 6, paddingHorizontal: spacing.md },
+  trackingActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  pasteModal: { flex: 1, backgroundColor: colors.background },
+  pasteContent: { padding: spacing.lg, gap: spacing.md },
+  pasteInput: { minHeight: 220 },
+  pasteCancel: { marginTop: spacing.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   rowLabel: { ...typography.caption },
   rowValue: { ...typography.bodyMedium, textAlign: 'right', flexShrink: 1, marginLeft: spacing.md },

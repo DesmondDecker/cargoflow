@@ -6,17 +6,18 @@ interface Props {
   busy: boolean;
   onConfirm: (newPassword: string) => void;
   onCancel: () => void;
+  minLength?: number; // defaults to 8
 }
 
-export function SetPasswordModal({ title, warning, busy, onConfirm, onCancel }: Props) {
+export function SetPasswordModal({ title, warning, busy, onConfirm, onCancel, minLength = 8 }: Props) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
     setError(null);
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    if (password.length < minLength) {
+      setError(`Password must be at least ${minLength} characters.`);
       return;
     }
     if (password !== confirmPassword) {

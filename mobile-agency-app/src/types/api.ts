@@ -25,6 +25,12 @@ export interface Importer {
   phone?: string;
   email?: string;
   address?: string;
+  addressLine2?: string;
+  city?: string;
+  country?: string;
+  tin?: string;
+  hasIdCardFront?: boolean;
+  hasIdCardBack?: boolean;
   isActive: boolean;
 }
 
@@ -59,9 +65,28 @@ export interface ContainerListItem {
   vessel?: string;
   importerId?: { _id: string; name: string } | string;
   assignedOfficerId?: { _id: string; name: string } | string;
-  liveTracking?: { resolved: boolean; carrierName?: string; status?: string; vesselName?: string; eta?: string; source: string; publicTrackingUrl?: string };
+  liveTracking?: LiveTracking;
   updatedAt: string;
   version: number;
+}
+
+export interface LiveTracking {
+  resolved: boolean;
+  carrierName?: string;
+  status?: string;
+  vesselName?: string;
+  eta?: string;
+  source: string;
+  publicTrackingUrl?: string;
+  // Present only when staff pasted a carrier tracking page (source 'pasted:*').
+  originPlace?: string;
+  destinationPlace?: string;
+  departedAt?: string;
+  latestEvent?: { description: string; location?: string; facility?: string; at?: string };
+  eventsCompleted?: number;
+  carrierUpdatedNote?: string;
+  recordedAt?: string;
+  recordedByName?: string;
 }
 
 export interface ExternalTrackingLookup {
@@ -74,9 +99,9 @@ export interface ContainerCaseFile {
   container: ContainerListItem & {
     dates: { arrival?: string; doReceived?: string; discharged?: string; cleared?: string; delivered?: string };
     deadlines: ContainerDeadline[];
-    blId: { _id: string; blNumber: string; shippingLine?: string; vessel?: string };
+    blId: { _id: string; blNumber: string; shippingLine?: string; vesselName?: string; portOfLoading?: string; portOfDischarge?: string };
     statusHistory: { status: string; changedAt: string; changedBy?: { name: string }; note?: string }[];
-    liveTracking?: { resolved: boolean; carrierName?: string; status?: string; vesselName?: string; eta?: string; source: string; publicTrackingUrl?: string };
+    liveTracking?: LiveTracking;
     numberValidation?: { formatValid: boolean; checkDigitValid: boolean | null; issue?: string };
     requiredDocumentTypes: string[];
   };
@@ -100,7 +125,8 @@ export interface DailyDigest {
   billsOfLading: { total: number; withAttentionContainers: number };
   deadlines: {
     expired: { containerNumber: string; ruleName: string; dueDate: string }[];
-    dueWithin3Days: { containerNumber: string; ruleName: string; dueDate: string }[];
+    dueWithin3Days: { containerNumber: string; ruleName: string; dueDate: string }[]; // despite the name: deadlines due within `windowDays`
+    windowDays?: number;
   };
   missingDocumentsContainerCount: number;
   documentReminders: { containerNumber: string; blNumber: string; importerName: string; missingDocumentTypes: string[] }[];
@@ -135,6 +161,9 @@ export interface CargoDocument {
   containerId?: string;
   versions: DocumentVersion[];
   currentVersion: number;
+  reviewStatus?: 'pending_review' | 'verified';
+  reviewedAt?: string;
+  reviewedByName?: string;
   createdAt: string;
 }
 
@@ -173,4 +202,67 @@ export interface TransportAssignment {
   requiredDate?: string;
   status: TransportStatus;
   createdAt: string;
+}
+
+export interface LetterFieldDef {
+  key: string;
+  label: string;
+  required: boolean;
+  multiline?: boolean;
+  hint?: string;
+}
+
+export interface LetterTemplate {
+  key: string;
+  title: string;
+  description: string;
+  carrier: string;
+  fields: LetterFieldDef[];
+}
+
+export interface LetterSummary {
+  _id: string;
+  templateKey: string;
+  title: string;
+  missingCount: number;
+  updatedAt: string;
+  createdByName: string;
+}
+
+export interface Letter {
+  _id: string;
+  containerId: string;
+  templateKey: string;
+  template: LetterTemplate;
+  fields: Record<string, string>;
+  missing: string[];
+  warnings: string[];
+  history: { editedByName: string; editedAt: string }[];
+  createdByName: string;
+  lastDownloadedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomsFields {
+  cvcNumber: string;
+  billOfLadingNumber: string;
+  shippingAgency: string;
+  containerNumber: string;
+  documentName: string;
+  itsNumber: string;
+}
+
+export interface CustomsSubmission extends CustomsFields {
+  _id: string;
+  source: 'agent' | 'customs_assisted';
+  submittedByName: string;
+  status: 'pending' | 'approved' | 'returned';
+  submittedAt: string;
+  submissionCount: number;
+  approvalReference?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  returnReason?: string;
+  history: { at: string; actorType: string; actorName: string; action: string; note?: string }[];
 }

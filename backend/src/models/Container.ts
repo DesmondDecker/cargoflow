@@ -51,6 +51,16 @@ export interface ContainerDoc {
     eta?: Date;
     source: string;
     publicTrackingUrl?: string;
+    // Filled only when staff paste a carrier tracking page (source 'pasted:*').
+    originPlace?: string;
+    destinationPlace?: string;
+    departedAt?: Date;
+    latestEvent?: { description: string; location?: string; facility?: string; at?: Date };
+    eventsCompleted?: number;
+    carrierUpdatedNote?: string; // e.g. "16 hours ago", as shown on the carrier page
+    externalRef?: string; // id a tracking service gave this container (MarineTraffic shipment id)
+    recordedAt?: Date;
+    recordedByName?: string;
   };
   assignedOfficerId?: Types.ObjectId;
   dates: {
@@ -105,6 +115,20 @@ const containerSchema = new Schema<ContainerDoc>(
       eta: Date,
       source: { type: String, default: 'none' },
       publicTrackingUrl: String,
+      originPlace: String,
+      destinationPlace: String,
+      departedAt: Date,
+      latestEvent: {
+        description: String,
+        location: String,
+        facility: String,
+        at: Date,
+      },
+      eventsCompleted: Number,
+      carrierUpdatedNote: String,
+      externalRef: String,
+      recordedAt: Date,
+      recordedByName: String,
     },
     assignedOfficerId: { type: Schema.Types.ObjectId, ref: 'User' },
     dates: {

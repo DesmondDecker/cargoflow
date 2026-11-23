@@ -1,5 +1,5 @@
 import { AwsClient } from 'aws4fetch';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { env } from '../config/env';
 import { AppError } from '../utils/AppError';
 
@@ -11,7 +11,8 @@ export type UploadPurpose =
   | 'warehouse_photo'
   | 'storage_condition_photo'
   | 'expense_evidence'
-  | 'receipt_pdf';
+  | 'receipt_pdf'
+  | 'client_id_card';
 
 // Cloudflare R2 is S3-API-compatible, so a tiny fetch-based signer
 // (aws4fetch) is enough — no need for the full AWS SDK. Presigned PUT URLs
@@ -19,6 +20,27 @@ export type UploadPurpose =
 // server, which is why every upload flow (mobile document scan, driver
 // proof-of-delivery) is "get a URL, then PUT to it" rather than a multipart
 // upload endpoint here.
+// Only these file types may be stored, and the file extension comes from this
+// table, never from what the client sent. Anything else (HTML, SVG, scripts)
+// is refused, so nothing stored here can run in a browser if the bucket is
+// ever served from a public address.
+export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'application/pdf': 'pdf',
+};
+
+export function extensionFor(contentType: string): string {
+  const ext = ALLOWED_UPLOAD_TYPES[String(contentType).trim().toLowerCase()];
+  if (!ext) {
+    throw AppError.badRequest('That file type is not allowed. Use a JPEG, PNG, WebP, HEIC or PDF file.', 'UNSUPPORTED_FILE_TYPE');
+  }
+  return ext;
+}
+
 function client(): AwsClient {
   return new AwsClient({ accessKeyId: env.r2.accessKeyId, secretAccessKey: env.r2.secretAccessKey, service: 's3', region: 'auto' });
 }
@@ -35,6 +57,8 @@ export interface PresignedUpload {
 }
 
 export async function createPresignedUploadUrl(purpose: UploadPurpose, contentType: string, ownerId: string): Promise<PresignedUpload> {
+  const ext = extensionFor(contentType);
+  contentType = contentType.trim().toLowerCase();
   if (!env.r2.configured) {
     throw AppError.notImplemented(
       'File storage is not configured on this server yet (R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET). Set these env vars to enable uploads.',
@@ -42,8 +66,7 @@ export async function createPresignedUploadUrl(purpose: UploadPurpose, contentTy
     );
   }
 
-  const ext = contentType.split('/')[1] || 'bin';
-  const fileKey = `${purpose}/${ownerId}/${Date.now()}-${uuidv4()}.${ext}`;
+  const fileKey = `${purpose}/${ownerId}/${Date.now()}-${randomUUID()}.${ext}`;
   const expiresIn = 300; // seconds
 
   const url = new URL(`${endpoint()}/${env.r2.bucket}/${fileKey}`);
@@ -65,6 +88,7 @@ export async function createPresignedUploadUrl(purpose: UploadPurpose, contentTy
 // there's no client to hand a presigned URL to; the server has to be the
 // one doing the PUT. Same signing, same bucket, just no round trip.
 export async function uploadBufferToR2(purpose: UploadPurpose, ownerId: string, buffer: Buffer, contentType: string): Promise<{ fileKey: string; fileUrl: string }> {
+  const ext = extensionFor(contentType);
   if (!env.r2.configured) {
     throw AppError.notImplemented(
       'File storage is not configured on this server yet (R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET). Set these env vars to enable uploads.',
@@ -72,8 +96,7 @@ export async function uploadBufferToR2(purpose: UploadPurpose, ownerId: string, 
     );
   }
 
-  const ext = contentType.split('/')[1] || 'bin';
-  const fileKey = `${purpose}/${ownerId}/${Date.now()}-${uuidv4()}.${ext}`;
+  const fileKey = `${purpose}/${ownerId}/${Date.now()}-${randomUUID()}.${ext}`;
   const url = `${endpoint()}/${env.r2.bucket}/${fileKey}`;
 
   const signedRequest = await client().sign(
@@ -88,4 +111,29 @@ export async function uploadBufferToR2(purpose: UploadPurpose, ownerId: string, 
 
   const fileUrl = env.r2.publicBaseUrl ? `${env.r2.publicBaseUrl.replace(/\/$/, '')}/${fileKey}` : url;
   return { fileKey, fileUrl };
+}
+
+
+// A short-lived link to READ a stored file. Used for files that must not have
+// a permanent public address, such as clients' ID card photos: only the key is
+// stored, and a link is made on demand for someone who is allowed to see it.
+export async function createPresignedDownloadUrl(fileKey: string, expiresIn = 300): Promise<string> {
+  if (!env.r2.configured) {
+    throw AppError.notImplemented('File storage is not configured on this server yet.', 'STORAGE_NOT_CONFIGURED');
+  }
+  const url = new URL(`${endpoint()}/${env.r2.bucket}/${fileKey}`);
+  url.searchParams.set('X-Amz-Expires', String(expiresIn));
+  const signed = await client().sign(new Request(url.toString(), { method: 'GET' }), { aws: { signQuery: true } });
+  return signed.url;
+}
+
+export async function deleteStoredFile(fileKey: string): Promise<void> {
+  if (!env.r2.configured) {
+    throw AppError.notImplemented('File storage is not configured on this server yet.', 'STORAGE_NOT_CONFIGURED');
+  }
+  const signed = await client().sign(new Request(`${endpoint()}/${env.r2.bucket}/${fileKey}`, { method: 'DELETE' }), { aws: { signQuery: false } });
+  const response = await fetch(signed);
+  if (!response.ok && response.status !== 404) {
+    throw new AppError(`R2 delete failed: ${response.status}`, 502, 'STORAGE_DELETE_FAILED');
+  }
 }

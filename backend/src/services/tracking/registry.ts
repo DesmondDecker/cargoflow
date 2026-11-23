@@ -1,12 +1,26 @@
 import { DcsaTrackingProvider } from './dcsaProvider';
 import { ScraperTrackingProvider } from './scraperProvider';
+import { MarineTrafficProvider } from './marineTrafficProvider';
+import { ChainTrackingProvider, ChainMember } from './chainProvider';
+import { scacFor } from './carrierScac';
 import { TrackingProvider } from './types';
 
-// A carrier gets a real provider when its own API credentials are set.
-// If the carrier does not expose a standards-based API, the scraper below
-// provides a guarded fallback for public tracking pages, but only when the
-// carrier URL is explicitly configured. This is intentionally opt-in and
-// never enabled by default.
+// How a container is looked up. Each carrier gets an ordered chain, and the
+// first source that has an answer wins:
+//
+//   1. The carrier's own API (DCSA Track & Trace), when its credentials are set.
+//   2. MarineTraffic's Container Tracking API, a paid carrier-independent
+//      backup, when MARINETRAFFIC_API_KEY is set and the carrier's SCAC is known.
+//   3. The public-page scraper, opt-in per carrier (TRACKING_SCRAPER_ENABLED=true
+//      plus SCRAPER_URL_<CARRIER>). It only works on pages whose result is in
+//      the HTML the server receives; pages that build the result with
+//      JavaScript return nothing.
+//   4. Generic public tracking, which needs no setup and is the last resort:
+//      the carrier is identified from the container prefix and the app links
+//      to the carrier's own public tracking page (PUBLIC_TRACKER_URLS below).
+//      Staff can also capture a result from that page (see the Track button).
+//
+// Steps 1 to 3 live in this file; step 4 is trackingRefresh.ts.
 //
 // Where to get these, per carrier (self-service, free registration as of
 // this writing — carrier portals change, so verify before relying on this):
@@ -35,16 +49,19 @@ import { TrackingProvider } from './types';
 // there's no default URL to fall back on. Each requires all four of its own
 // env vars (client id, secret, token URL, API base URL) before it activates
 // at all — check that carrier's developer portal first.
-function buildProviders(): Record<string, TrackingProvider> {
+function buildCarrierApiProviders(): Record<string, TrackingProvider> {
   const providers: Record<string, TrackingProvider> = {};
 
   if (process.env.MAERSK_DCSA_CLIENT_ID && process.env.MAERSK_DCSA_CLIENT_SECRET) {
     providers['Maersk'] = new DcsaTrackingProvider({
       carrierName: 'Maersk',
-      tokenUrl: process.env.MAERSK_DCSA_TOKEN_URL || 'https://api.maersk.com/oauth2/access_token',
+      tokenUrl: process.env.MAERSK_DCSA_TOKEN_URL || 'https://api.maersk.com/customer-identity/oauth/v2/access_token',
       apiBaseUrl: process.env.MAERSK_DCSA_API_BASE_URL || 'https://api.maersk.com/track-and-trace-private',
       clientId: process.env.MAERSK_DCSA_CLIENT_ID,
       clientSecret: process.env.MAERSK_DCSA_CLIENT_SECRET,
+      // Maersk requires the Consumer Key header as well as the bearer token.
+      // The consumer key is the same value as the OAuth client id.
+      consumerKey: process.env.MAERSK_DCSA_CONSUMER_KEY || process.env.MAERSK_DCSA_CLIENT_ID,
     });
   }
 
@@ -140,23 +157,79 @@ function buildProviders(): Record<string, TrackingProvider> {
     });
   }
 
-  if (process.env.TRACKING_SCRAPER_ENABLED === 'true' && !providers['MSC'] && process.env.MSC_TRACKER_URL) {
-    providers['MSC'] = new ScraperTrackingProvider({
-      carrierName: 'MSC',
-      trackingUrl: process.env.MSC_TRACKER_URL,
-      queryParamName: 'containerNumber',
-    });
-  }
-
   return providers;
 }
 
-let cachedProviders: Record<string, TrackingProvider> | null = null;
+function carrierSlug(carrierName: string): string {
+  return carrierName.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
 
-export function getTrackingProvider(carrierName: string | undefined): TrackingProvider | undefined {
+// Scraper settings for one carrier. SCRAPER_URL_<CARRIER> is the page address
+// (it may contain {container}, or the number is added as a query parameter
+// named by SCRAPER_PARAM_<CARRIER>, default "container"). MSC_TRACKER_URL is
+// still honoured, as before.
+function buildScraper(carrierName: string): TrackingProvider | undefined {
+  if (process.env.TRACKING_SCRAPER_ENABLED !== 'true') return undefined;
+  const slug = carrierSlug(carrierName);
+  const url = process.env[`SCRAPER_URL_${slug}`] || (carrierName === 'MSC' ? process.env.MSC_TRACKER_URL : undefined);
+  if (!url) return undefined;
+  const param = process.env[`SCRAPER_PARAM_${slug}`] || (carrierName === 'MSC' ? 'containerNumber' : undefined);
+  return new ScraperTrackingProvider({ carrierName, trackingUrl: url, queryParamName: param });
+}
+
+let carrierApiProviders: Record<string, TrackingProvider> | null = null;
+let marineTraffic: MarineTrafficProvider | null | undefined;
+const chains = new Map<string, ChainTrackingProvider | null>();
+
+function marineTrafficProvider(): MarineTrafficProvider | null {
+  if (marineTraffic === undefined) {
+    marineTraffic = process.env.MARINETRAFFIC_API_KEY
+      ? new MarineTrafficProvider({ apiKey: process.env.MARINETRAFFIC_API_KEY, baseUrl: process.env.MARINETRAFFIC_API_BASE_URL })
+      : null;
+  }
+  return marineTraffic;
+}
+
+function buildChain(carrierName: string): ChainTrackingProvider | null {
+  if (!carrierApiProviders) carrierApiProviders = buildCarrierApiProviders();
+  const members: ChainMember[] = [];
+
+  const api = carrierApiProviders[carrierName];
+  if (api) members.push({ label: 'carrier API', provider: api });
+
+  const mt = marineTrafficProvider();
+  if (mt && scacFor(carrierName)) members.push({ label: 'MarineTraffic', provider: mt });
+
+  const scraper = buildScraper(carrierName);
+  if (scraper) members.push({ label: 'public page scraper', provider: scraper });
+
+  return members.length > 0 ? new ChainTrackingProvider(carrierName, members) : null;
+}
+
+// The lookup chain for a carrier, or undefined when nothing is configured for
+// it (generic public tracking then applies; see trackingRefresh.ts).
+export function getTrackingProvider(carrierName: string | undefined): ChainTrackingProvider | undefined {
   if (!carrierName) return undefined;
-  if (!cachedProviders) cachedProviders = buildProviders();
-  return cachedProviders[carrierName];
+  if (!chains.has(carrierName)) chains.set(carrierName, buildChain(carrierName));
+  return chains.get(carrierName) ?? undefined;
+}
+
+// What is switched on for each carrier, for a settings screen to show. The
+// public link and manual capture are always available.
+export interface TrackingSourceSummary {
+  carrier: string;
+  liveSources: string[]; // e.g. ['carrier API', 'MarineTraffic']
+}
+
+export function describeTrackingSources(): TrackingSourceSummary[] {
+  return Object.keys(PUBLIC_TRACKER_URLS).map((carrier) => ({ carrier, liveSources: getTrackingProvider(carrier)?.labels ?? [] }));
+}
+
+// Lets tests change the environment between cases.
+export function resetTrackingRegistryForTests(): void {
+  carrierApiProviders = null;
+  marineTraffic = undefined;
+  chains.clear();
 }
 
 // Honest fallback for a carrier with no configured API (MSC today, and any

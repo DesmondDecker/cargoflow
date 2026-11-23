@@ -7,7 +7,16 @@ export interface ImporterDoc {
   contactPerson?: string;
   phone?: string;
   email?: string;
-  address?: string;
+  address?: string; // address line 1
+  addressLine2?: string;
+  city?: string;
+  country?: string;
+  tin?: string; // taxpayer identification number
+  // Storage keys of the client's ID card photos. Deliberately NOT public
+  // URLs: the photos are only reachable through a short-lived signed link
+  // handed to an owner or admin (see importerController).
+  idCardFrontKey?: string;
+  idCardBackKey?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -21,6 +30,12 @@ const importerSchema = new Schema<ImporterDoc>(
     phone: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
     address: { type: String, trim: true },
+    addressLine2: { type: String, trim: true },
+    city: { type: String, trim: true },
+    country: { type: String, trim: true },
+    tin: { type: String, trim: true },
+    idCardFrontKey: { type: String, select: false },
+    idCardBackKey: { type: String, select: false },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

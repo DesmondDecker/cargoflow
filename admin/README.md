@@ -25,7 +25,7 @@ PLATFORM_ADMIN_EMAIL=you@summittech.sl PLATFORM_ADMIN_PASSWORD=... PLATFORM_ADMI
 - **Drivers** — every driver on the platform, searchable by name/phone, with a **Reset Password** action for a locked-out driver.
 - **Team** — your own password change (self-service, requires your current password), and adding/deactivating other Summit Technologies admin accounts. There's no public registration for platform admins by design — this page and the backend seed script are the only ways in.
 
-Password resets on the **Agencies** page (shared agency password) and **Drivers** page (individual driver password) are recovery paths, not self-service — there's no "forgot password" email/SMS flow wired up yet, so this is how a locked-out customer actually gets back in: they contact support, an admin verifies who they are some other way (phone call, ID check — that verification happens outside this system), then resets it here and relays the new password directly. Both immediately revoke existing sessions.
+Resets on the **Agencies** page (the join password, and the owner's PIN when the owner is locked out) and **Drivers** page (individual driver password) are recovery paths, not self-service — there's no "forgot password" email/SMS flow wired up yet, so this is how a locked-out customer actually gets back in: they contact support, an admin verifies who they are some other way (phone call, ID check — that verification happens outside this system), then resets it here and relays the new password directly. Owner-PIN and driver resets immediately revoke that person's sessions; the join-password reset signs nobody out.
 
 ## Design
 

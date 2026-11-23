@@ -1,26 +1,49 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const ACCESS_TOKEN_KEY = 'cargoflow_admin_access_token';
-const REFRESH_TOKEN_KEY = 'cargoflow_admin_refresh_token';
+// The API address is read from /config.js when the page loads, so the same built files work on any server
+// (edit config.js, no rebuild). VITE_API_BASE_URL is only the fallback.
+export const baseURL = window.__CARGOFLOW__?.apiBaseUrl || (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:4000/api/v1';
 
-const baseURL = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:4000/api/v1';
+// withCredentials: the refresh token is an httpOnly cookie the browser sends by itself.
+// X-CargoFlow-Admin is required by the cookie endpoints (refresh, logout) as a CSRF guard.
+export const api = axios.create({ baseURL, timeout: 15000, withCredentials: true });
+const ADMIN_HEADER = { 'X-CargoFlow-Admin': '1' };
 
-export const api = axios.create({ baseURL, timeout: 15000 });
+// The access token lives in page memory only: nothing is written to localStorage,
+// so a script injected into the page cannot read a stored token. After a page reload
+// the app gets a fresh one from the refresh cookie (see refreshSession).
+let accessToken: string | null = null;
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  return accessToken;
 }
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-export function setTokens(accessToken: string, refreshToken?: string): void {
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
 }
 export function clearTokens(): void {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  accessToken = null;
 }
+
+// Uses the refresh cookie to get a new access token. Returns the admin, or null if not signed in.
+export async function refreshSession(): Promise<{ id: string; name: string; email: string; role?: string } | null> {
+  try {
+    const { data } = await axios.post(`${baseURL}/platform-admin/refresh`, {}, { withCredentials: true, headers: ADMIN_HEADER });
+    accessToken = data.data.accessToken as string;
+    return data.data.admin;
+  } catch {
+    accessToken = null;
+    return null;
+  }
+}
+
+export async function serverLogout(): Promise<void> {
+  try {
+    await api.post('/platform-admin/logout', {}, { headers: ADMIN_HEADER });
+  } catch {
+    // Already signed out or offline: the local token is dropped either way.
+  }
+}
+
 
 let forceLogoutHandler: (() => void) | null = null;
 export function setForceLogoutHandler(handler: () => void): void {
@@ -71,11 +94,10 @@ api.interceptors.response.use(
     original._retry = true;
     isRefreshing = true;
     try {
-      const refreshToken = getRefreshToken();
-      if (!refreshToken) throw new Error('No refresh token');
-      const { data } = await axios.post(`${baseURL}/platform-admin/refresh`, { refreshToken });
+      // The server rotates the refresh cookie on every use.
+      const { data } = await axios.post(`${baseURL}/platform-admin/refresh`, {}, { withCredentials: true, headers: ADMIN_HEADER });
       const newAccessToken = data.data.accessToken as string;
-      setTokens(newAccessToken);
+      accessToken = newAccessToken;
       flushQueue(null, newAccessToken);
       original.headers = original.headers || {};
       original.headers.Authorization = `Bearer ${newAccessToken}`;

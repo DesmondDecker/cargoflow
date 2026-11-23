@@ -16,6 +16,9 @@ function driverSummary(d: {
   isActive: boolean;
   ratingTotal: number;
   ratingCount: number;
+  location?: string;
+  yearsExperience?: number;
+  licenseDocumentUrl?: string;
 }) {
   return {
     id: String(d._id),
@@ -26,6 +29,9 @@ function driverSummary(d: {
     isActive: d.isActive,
     ratingAverage: d.ratingCount > 0 ? Math.round((d.ratingTotal / d.ratingCount) * 10) / 10 : 0,
     ratingCount: d.ratingCount,
+    location: d.location,
+    yearsExperience: d.yearsExperience,
+    licenseDocumentUrl: d.licenseDocumentUrl,
   };
 }
 

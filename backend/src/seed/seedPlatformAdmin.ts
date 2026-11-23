@@ -21,7 +21,7 @@ async function run() {
     console.log(`Platform admin ${env.seedAdmin.email} already exists — nothing to do.`);
   } else {
     const passwordHash = await hashPassword(env.seedAdmin.password);
-    await PlatformAdminModel.create({ name: env.seedAdmin.name, email: env.seedAdmin.email.toLowerCase(), passwordHash });
+    await PlatformAdminModel.create({ name: env.seedAdmin.name, email: env.seedAdmin.email.toLowerCase(), passwordHash, role: 'super_admin' });
     console.log(`Created platform admin: ${env.seedAdmin.email}`);
   }
 

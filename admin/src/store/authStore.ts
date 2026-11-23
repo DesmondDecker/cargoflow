@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import * as adminApi from '../api/adminApi';
-import { getAccessToken, setTokens, clearTokens, setForceLogoutHandler, apiErrorMessage } from '../api/client';
+import { setAccessToken, clearTokens, refreshSession, serverLogout, setForceLogoutHandler, apiErrorMessage } from '../api/client';
 
 interface AdminUser {
   id: string;
   name: string;
   email: string;
+  role?: string;
 }
 
 interface AuthState {
@@ -15,7 +16,7 @@ interface AuthState {
   error: string | null;
   bootstrap: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -25,31 +26,21 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   bootstrap: async () => {
-    const token = getAccessToken();
-    if (!token) {
-      set({ status: 'signedOut' });
+    // No token is stored in the browser. If the refresh cookie is still valid
+    // the server hands back a new access token and the admin's identity.
+    const admin = await refreshSession();
+    if (!admin) {
+      set({ status: 'signedOut', admin: null });
       return;
     }
-    // A token being present isn't enough on its own — fetch the actual
-    // admin identity so `admin` in the store is correct after a page
-    // refresh, not just null with a stale-looking signed-in status. This
-    // also doubles as a validity check: an expired/revoked token here
-    // triggers the client's refresh flow, and if that fails too, the
-    // forceLogoutHandler flips status back to signedOut.
-    try {
-      const admin = await adminApi.fetchOwnAdminProfile();
-      set({ status: 'signedIn', admin: { id: admin._id || admin.id || '', name: admin.name, email: admin.email } });
-    } catch {
-      clearTokens();
-      set({ status: 'signedOut' });
-    }
+    set({ status: 'signedIn', admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } });
   },
 
   login: async (email, password) => {
     set({ loading: true, error: null });
     try {
       const result = await adminApi.login(email, password);
-      setTokens(result.accessToken, result.refreshToken);
+      setAccessToken(result.accessToken);
       set({ status: 'signedIn', admin: result.admin, loading: false });
     } catch (err) {
       set({ loading: false, error: apiErrorMessage(err) });
@@ -57,7 +48,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    await serverLogout(); // revokes the refresh token and clears the cookie
     clearTokens();
     set({ status: 'signedOut', admin: null });
   },

@@ -22,6 +22,12 @@ export const env = {
 
   corsOrigin: process.env.CORS_ORIGIN || '*',
 
+  // Number of reverse proxies (nginx, a load balancer, Railway/Render...) in
+  // front of this server. Leave 0 when the API is reached directly. When it
+  // sits behind one proxy set 1; otherwise every client appears to come from
+  // the proxy's address and the login rate limit is shared by everyone.
+  trustProxy: Math.max(0, parseInt(process.env.TRUST_PROXY || '0', 10) || 0),
+
   r2: {
     accountId: process.env.R2_ACCOUNT_ID || '',
     accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
@@ -40,7 +46,31 @@ export const env = {
   },
 };
 
-if (env.isProd && (env.accessTokenSecret.startsWith('dev-insecure') || env.refreshTokenSecret.startsWith('dev-insecure'))) {
-  // eslint-disable-next-line no-console
-  console.warn('[SECURITY WARNING] Running in production with default JWT secrets. Set ACCESS_TOKEN_SECRET / REFRESH_TOKEN_SECRET.');
+// Placeholder, short or shared signing secrets in production would let anyone
+// who has read the example file forge a login token, so the server refuses to
+// start with them instead of warning and carrying on.
+export function weakSecretProblem(access: string, refresh: string): string | null {
+  const weak = (v: string) => v.startsWith('dev-insecure') || v.startsWith('change-me') || v.length < 32;
+  if (weak(access)) return 'ACCESS_TOKEN_SECRET is a placeholder or shorter than 32 characters';
+  if (weak(refresh)) return 'REFRESH_TOKEN_SECRET is a placeholder or shorter than 32 characters';
+  if (access === refresh) return 'ACCESS_TOKEN_SECRET and REFRESH_TOKEN_SECRET must be different';
+  return null;
+}
+
+if (env.isProd) {
+  const problem = weakSecretProblem(env.accessTokenSecret, env.refreshTokenSecret);
+  if (problem) throw new Error(`Refusing to start in production: ${problem}. Generate each with: openssl rand -hex 32`);
+}
+
+// A wildcard origin in production lets any website call the API from a
+// visitor's browser, so production must name the web addresses it serves.
+export function corsProblem(origin: string): string | null {
+  const list = origin.split(',').map((o) => o.trim()).filter(Boolean);
+  if (list.length === 0 || list.includes('*')) return 'CORS_ORIGIN is not set or is "*"';
+  return null;
+}
+
+if (env.isProd) {
+  const problem = corsProblem(env.corsOrigin);
+  if (problem) throw new Error(`Refusing to start in production: ${problem}. List the admin and portal web addresses, comma-separated.`);
 }

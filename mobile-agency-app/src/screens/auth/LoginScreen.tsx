@@ -17,18 +17,18 @@ export function LoginScreen({ navigation }: Props) {
   const clearError = useAuthStore((s) => s.clearError);
   const [agencyCode, setAgencyCode] = useState('');
   const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const onSubmit = async () => {
     setValidationError(null);
     clearError();
-    if (!agencyCode || !identifier || !password) {
-      setValidationError('Fill in the agency code, your name or phone, and the password.');
+    if (!agencyCode || !identifier || !pin) {
+      setValidationError('Fill in the agency code, your name or phone, and your PIN.');
       return;
     }
     try {
-      await login({ agencyCode: agencyCode.trim().toUpperCase(), identifier: identifier.trim(), password });
+      await login({ agencyCode: agencyCode.trim().toUpperCase(), identifier: identifier.trim(), pin });
     } catch {
       // The store already captured the specific backend message in `error`
       // (e.g. "Incorrect agency password") — nothing further to do here.
@@ -40,11 +40,11 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <Screen>
       <Text style={styles.title}>Log In</Text>
-      <Text style={styles.subtitle}>Enter your agency code, then your name or phone, and the agency password.</Text>
+      <Text style={styles.subtitle}>Enter your agency code, your name or phone, and your own 6-digit PIN.</Text>
 
       <Field label="Agency Code" placeholder="e.g. K3F9XQ" autoCapitalize="characters" value={agencyCode} onChangeText={setAgencyCode} />
       <Field label="Your Name or Phone" placeholder="e.g. Ibrahim or 076123456" value={identifier} onChangeText={setIdentifier} />
-      <Field label="Agency Password" placeholder="••••••••" secureTextEntry value={password} onChangeText={setPassword} />
+      <Field label="Your PIN" placeholder="6 digits" secureTextEntry keyboardType="number-pad" maxLength={6} value={pin} onChangeText={setPin} />
 
       {displayedError ? <Text style={styles.error}>{displayedError}</Text> : null}
 

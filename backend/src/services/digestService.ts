@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { resolveRules } from './agencyRules';
 import { ContainerModel } from '../models/Container';
 import { BillOfLadingModel } from '../models/BillOfLading';
 import { ActivityLogModel } from '../models/ActivityLog';
@@ -19,7 +20,8 @@ const STALE_DAYS = 10; // no status change in this many days = "stale"
 export async function computeDailyDigest(agencyId: string | Types.ObjectId) {
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const windowDays = resolveRules((await AgencyModel.findById(agencyId).select('rules'))?.rules).attentionWindowDays;
+  const inWindow = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
   const staleThreshold = new Date(now.getTime() - STALE_DAYS * 24 * 60 * 60 * 1000);
 
   const containers = await ContainerModel.find({ agencyId }).populate('importerId', 'name').populate('blId', 'blNumber');
@@ -51,7 +53,7 @@ export async function computeDailyDigest(agencyId: string | Types.ObjectId) {
 
     for (const d of c.deadlines) {
       if (d.status === 'expired') expired.push({ containerNumber: c.containerNumber, ruleName: d.ruleName, dueDate: d.dueDate.toISOString() });
-      else if (d.status === 'pending' && d.dueDate <= in3Days) dueWithin3Days.push({ containerNumber: c.containerNumber, ruleName: d.ruleName, dueDate: d.dueDate.toISOString() });
+      else if (d.status === 'pending' && d.dueDate <= inWindow) dueWithin3Days.push({ containerNumber: c.containerNumber, ruleName: d.ruleName, dueDate: d.dueDate.toISOString() });
     }
 
     const lastActive = c.statusHistory.length ? c.statusHistory[c.statusHistory.length - 1].changedAt : c.updatedAt;
@@ -73,7 +75,8 @@ export async function computeDailyDigest(agencyId: string | Types.ObjectId) {
     generatedAt: now.toISOString(),
     containers: { total: containers.length, urgent, attention, normal, byStatus },
     billsOfLading: { total: billsOfLadingTotal, withAttentionContainers: blWithAttention.length },
-    deadlines: { expired, dueWithin3Days },
+    // The field keeps its old name; windowDays says how many days it now covers.
+    deadlines: { expired, dueWithin3Days, windowDays },
     missingDocumentsContainerCount: documentReminders.length,
     documentReminders,
     missingCTNReminders,

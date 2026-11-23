@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Button } from '../../components/Button';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/Screen';
@@ -18,7 +19,7 @@ function formatDate(value?: string): string {
   return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export function ImporterProfileScreen({ route }: Props) {
+export function ImporterProfileScreen({ route, navigation }: Props) {
   const { importerId } = route.params;
   const [data, setData] = useState<ImporterProfile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -68,6 +69,12 @@ export function ImporterProfileScreen({ route }: Props) {
       <Text style={styles.title}>{importer.name}</Text>
       {importer.contactPerson ? <Text style={styles.subtitle}>{importer.contactPerson}</Text> : null}
       {importer.phone ? <Text style={styles.subtitle}>{importer.phone}</Text> : null}
+      {importer.tin ? <Text style={styles.subtitle}>TIN {importer.tin}</Text> : null}
+      {[importer.address, importer.addressLine2, importer.city, importer.country].filter(Boolean).length > 0 ? (
+        <Text style={styles.subtitle}>{[importer.address, importer.addressLine2, importer.city, importer.country].filter(Boolean).join(', ')}</Text>
+      ) : null}
+      <Text style={styles.subtitle}>ID card: {importer.hasIdCardFront || importer.hasIdCardBack ? `${importer.hasIdCardFront ? 'front' : ''}${importer.hasIdCardFront && importer.hasIdCardBack ? ' and ' : ''}${importer.hasIdCardBack ? 'back' : ''} on file` : 'not on file'}</Text>
+      <Button title="Edit client details" variant="outline" onPress={() => navigation.navigate('AddImporter', { importerId })} style={{ marginVertical: spacing.md }} />
 
       <View style={styles.statGrid}>
         <StatBox label="Active" value={summary.activeContainers} />

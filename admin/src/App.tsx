@@ -10,6 +10,11 @@ import { PaymentsPage } from './pages/PaymentsPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { GatewayDevicesPage } from './pages/GatewayDevicesPage';
 import { TeamPage } from './pages/TeamPage';
+import { PlansPage } from './pages/PlansPage';
+import { AuditLogPage } from './pages/AuditLogPage';
+import { InstitutionUsersPage } from './pages/InstitutionUsersPage';
+import { WarehousesPage } from './pages/WarehousesPage';
+import { InstitutionAuditPage } from './pages/InstitutionAuditPage';
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
   const status = useAuthStore((s) => s.status);
@@ -46,6 +51,11 @@ export default function App() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="expenses" element={<ExpensesPage />} />
           <Route path="gateway-devices" element={<GatewayDevicesPage />} />
+          <Route path="warehouses" element={<WarehousesPage />} />
+          <Route path="institution-users" element={<InstitutionUsersPage />} />
+          <Route path="plans" element={<PlansPage />} />
+          <Route path="audit-log" element={<AuditLogPage />} />
+          <Route path="institution-audit" element={<InstitutionAuditPage />} />
           <Route path="team" element={<TeamPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

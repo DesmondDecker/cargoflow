@@ -21,6 +21,11 @@ export interface DcsaProviderConfig {
   clientId: string;
   clientSecret: string;
   scope?: string;
+  // Gateway API key sent as a `Consumer-Key` header on BOTH the token request
+  // and every API call. Maersk's gateway requires it in addition to the
+  // OAuth bearer token (for Maersk the consumer key is the same value as the
+  // OAuth client id).
+  consumerKey?: string;
 }
 
 interface CachedToken {
@@ -51,7 +56,10 @@ export class DcsaTrackingProvider implements TrackingProvider {
     });
 
     const response = await axios.post(this.config.tokenUrl, body.toString(), {
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        ...(this.config.consumerKey ? { 'Consumer-Key': this.config.consumerKey } : {}),
+      },
       timeout: 10000,
     });
 
@@ -73,7 +81,10 @@ export class DcsaTrackingProvider implements TrackingProvider {
       // before going live.
       const response = await axios.get(`${this.config.apiBaseUrl}/events`, {
         params: { equipmentReference: containerNumber, limit: 20, sort: '-eventDateTime' },
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(this.config.consumerKey ? { 'Consumer-Key': this.config.consumerKey } : {}),
+        },
         timeout: 10000,
       });
 

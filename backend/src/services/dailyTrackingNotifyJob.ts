@@ -3,6 +3,7 @@ import { ContainerModel } from '../models/Container';
 import { UserModel } from '../models/User';
 import { DailyDigestModel } from '../models/DailyDigest';
 import { getTrackingProvider, PUBLIC_TRACKER_URLS } from './tracking/registry';
+import { applyTrackingResult, LiveTrackingValue } from './tracking/trackingRefresh';
 import { sendPushNotifications, PushMessage } from './pushService';
 import { OPEN_STATUSES } from '../constants/containerPipeline';
 
@@ -39,9 +40,12 @@ async function refreshTrackingForAgency(agencyId: string): Promise<TrackingChang
 
     const before = container.liveTracking?.status;
     try {
-      const result = await provider.fetchTracking(container.containerNumber);
-      container.liveTracking = { ...result, publicTrackingUrl: carrierName ? PUBLIC_TRACKER_URLS[carrierName] : undefined };
-      await container.save();
+      const live = container.liveTracking as unknown as LiveTrackingValue | undefined;
+      const result = await provider.fetchTracking(container.containerNumber, { carrierName, externalRef: live?.externalRef });
+      const publicTrackingUrl = carrierName ? PUBLIC_TRACKER_URLS[carrierName] : undefined;
+      // A failed lookup never erases tracking a person captured, and is not
+      // reported as a change.
+      if (applyTrackingResult(container as never, result, { guessedCarrier: carrierName, publicTrackingUrl })) await container.save();
 
       if (result.resolved && result.status && result.status !== before) {
         changes.push({ containerNumber: container.containerNumber, carrierName, before, after: result.status });
@@ -85,7 +89,13 @@ async function notifyAgency(agencyId: string, agencyName: string, changes: Track
   // rather than every staff member — a per-officer version (only their own
   // assigned containers) would need assignedOfficerId threaded through here,
   // which this pass doesn't do.
-  const recipients = await UserModel.find({ agencyId, role: { $in: ['owner', 'admin'] }, isActive: true, pushToken: { $exists: true, $ne: null } });
+  const recipients = await UserModel.find({
+    agencyId,
+    role: { $in: ['owner', 'admin'] },
+    isActive: true,
+    pushToken: { $exists: true, $ne: null },
+    'notificationPrefs.dailySummary': { $ne: false }, // people who turned the summary off in Settings are skipped
+  });
 
   const messages: PushMessage[] = recipients.map((u) => ({
     to: u.pushToken!,

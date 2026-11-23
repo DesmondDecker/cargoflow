@@ -8,9 +8,11 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 export function createApp() {
   const app = express();
+  if (env.trustProxy > 0) app.set('trust proxy', env.trustProxy);
 
   app.use(helmet());
-  app.use(cors({ origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(',') }));
+  // credentials: the admin dashboard's refresh cookie. Production refuses CORS_ORIGIN='*', so a cookie is never offered to an arbitrary site.
+  app.use(cors({ origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean), credentials: true }));
   app.use(express.json({ limit: '2mb' }));
   app.use(morgan(env.isProd ? 'combined' : 'dev'));
 

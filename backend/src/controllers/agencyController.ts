@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/apiResponse';
 import { AppError } from '../utils/AppError';
+import { resolveRules, checkRulesChange } from '../services/agencyRules';
+import { TERMINAL_STATUSES } from '../constants/containerPipeline';
 import { AgencyModel } from '../models/Agency';
 import { AgencyDemurrageTermModel } from '../models/AgencyDemurrageTerm';
 import { ContainerModel } from '../models/Container';
@@ -37,6 +39,7 @@ export const getAgencySettings = asyncHandler(async (req: Request, res: Response
     settings: {
       statusPipeline: withLabels(STATUS_PIPELINE, agency.statusLabels),
       documentTypes: withLabels(DOCUMENT_TYPES, agency.documentTypeLabels),
+      rules: resolveRules(agency.rules),
     },
   });
 });
@@ -53,6 +56,38 @@ const updateLabelsSchema = z.object({
 // dispatch, the attention engine, the daily digest) has never heard of and
 // wouldn't know what to do with. An empty-string label clears the override
 // and reverts that one entry to its default.
+const updateRulesSchema = z.object({
+  requiredDocumentTypes: z.array(z.string()).optional(),
+  attentionWindowDays: z.number().optional(),
+  defaultFreeStorageDays: z.number().optional(),
+  defaultGraceDays: z.number().optional(),
+});
+
+// The agency's working rules. Limits and valid values are in
+// services/agencyRules.ts. After a change every OPEN container is brought up
+// to date (its required documents, its deadlines and its attention flag), so
+// the list and the daily digest agree with the new rules straight away.
+export const updateAgencyRules = asyncHandler(async (req: Request, res: Response) => {
+  const change = updateRulesSchema.parse(req.body);
+  const problem = checkRulesChange(change);
+  if (problem) throw AppError.badRequest(problem, 'INVALID_RULES');
+  if (Object.keys(change).length === 0) throw AppError.badRequest('Nothing to change');
+
+  const set: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(change)) set[`rules.${key}`] = value;
+  const agency = await AgencyModel.findByIdAndUpdate(req.auth!.agencyId, { $set: set }, { new: true });
+  if (!agency) throw AppError.notFound('Agency not found');
+
+  const rules = resolveRules(agency.rules);
+  const open = await ContainerModel.find({ agencyId: req.auth!.agencyId, status: { $nin: TERMINAL_STATUSES } }).select('_id');
+  if (change.requiredDocumentTypes) {
+    await ContainerModel.updateMany({ agencyId: req.auth!.agencyId, status: { $nin: TERMINAL_STATUSES } }, { $set: { requiredDocumentTypes: rules.requiredDocumentTypes } });
+  }
+  for (const c of open) await recomputeDerivedFields(String(c._id));
+
+  return ok(res, { rules, updatedContainers: open.length });
+});
+
 export const updateAgencyLabels = asyncHandler(async (req: Request, res: Response) => {
   const input = updateLabelsSchema.parse(req.body);
 

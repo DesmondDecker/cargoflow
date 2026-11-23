@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { Types } from 'mongoose';
 import { env } from '../config/env';
 import { RefreshTokenModel } from '../models/RefreshToken';
@@ -11,7 +11,7 @@ function hashToken(raw: string): string {
 }
 
 function randomRefreshToken(): string {
-  return `${uuidv4()}.${crypto.randomBytes(32).toString('hex')}`;
+  return `${randomUUID()}.${crypto.randomBytes(32).toString('hex')}`;
 }
 
 export interface IssueTokensInput {

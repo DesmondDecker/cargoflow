@@ -101,7 +101,7 @@ export function ContainersListScreen({ navigation }: Props) {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(filter, search)} tintColor={colors.orange} />}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>No containers match this filter.</Text> : null}
+        ListEmptyComponent={loading ? undefined : <Text style={styles.empty}>No containers match this filter.</Text>}
         renderItem={({ item }) => (
           <Pressable
             onPress={() => navigation.navigate('ContainerCaseFile', { containerId: item._id, containerNumber: item.containerNumber })}

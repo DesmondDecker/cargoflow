@@ -8,6 +8,7 @@ import { colors, spacing, typography } from '../../theme/theme';
 import { fetchImporters } from '../../api/reportsApi';
 import { apiErrorMessage } from '../../api/client';
 import { Importer } from '../../types/api';
+import { cacheGet, cacheSet, isNetworkError, readOutbox } from '../../offline/outbox';
 import { ImportersStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ImportersStackParamList, 'ImportersList'>;
@@ -17,6 +18,8 @@ export function ImportersListScreen({ navigation }: Props) {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Importer[]>([]);
+  const [showingSaved, setShowingSaved] = useState(false);
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
@@ -34,9 +37,20 @@ export function ImportersListScreen({ navigation }: Props) {
     try {
       const result = await fetchImporters({ search: query || undefined });
       setImporters(result.importers);
+      setShowingSaved(false);
+      if (!query) cacheSet('importers', result.importers); // the full list, for offline
     } catch (err) {
-      setError(apiErrorMessage(err));
+      if (isNetworkError(err)) {
+        // No signal: show the list as last seen, filtered by what was typed.
+        const q = query.trim().toLowerCase();
+        setImporters((cacheGet<Importer[]>('importers') ?? []).filter((i) => !q || i.name.toLowerCase().includes(q)));
+        setShowingSaved(true);
+      } else {
+        setError(apiErrorMessage(err));
+      }
     } finally {
+      // Clients added with no signal that have not reached the server yet.
+      setPending(readOutbox().filter((o) => o.kind === 'importer_create').map((o) => ({ _id: o.id, name: String((o.payload as { name?: string }).name ?? ''), isActive: true })));
       setLoading(false);
     }
   }, []);
@@ -63,17 +77,19 @@ export function ImportersListScreen({ navigation }: Props) {
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {showingSaved ? <Text style={styles.error}>Offline: showing the clients last seen on this phone.</Text> : null}
 
       <FlatList
-        data={importers}
+        data={[...pending, ...importers]}
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(search)} tintColor={colors.orange} />}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>No importers yet.</Text> : null}
+        ListEmptyComponent={loading ? undefined : <Text style={styles.empty}>No importers yet.</Text>}
         renderItem={({ item }) => (
-          <Pressable onPress={() => navigation.navigate('ImporterProfile', { importerId: item._id, importerName: item.name })}>
+          <Pressable disabled={item._id.startsWith('out-')} onPress={() => navigation.navigate('ImporterProfile', { importerId: item._id, importerName: item.name })}>
             <Card style={styles.card}>
               <Text style={styles.name}>{item.name}</Text>
+              {item._id.startsWith('out-') ? <Text style={styles.meta}>Saved on this phone. Waiting to be added when you are online.</Text> : null}
               {item.contactPerson ? <Text style={styles.meta}>{item.contactPerson}</Text> : null}
               {item.phone ? <Text style={styles.meta}>{item.phone}</Text> : null}
             </Card>

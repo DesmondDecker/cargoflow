@@ -11,7 +11,15 @@ export interface UserDoc {
   role: UserRole;
   isActive: boolean;
   lastLoginAt?: Date;
+  pinHash?: string; // bcrypt hash of the person's own login PIN
+  pinFailedAttempts?: number;
+  pinLockedUntil?: Date;
   pushToken?: string; // Expo push token (e.g. "ExponentPushToken[...]") — set via PATCH /auth/push-token
+  // dailySummary: the 08:30 push (tracking changes, urgent containers, expired
+  // deadlines, missing documents). Missing means on.
+  // driverUpdates: a push when a driver accepts, declines or delivers a job
+  // the user assigned. Missing means on.
+  notificationPrefs?: { dailySummary?: boolean; driverUpdates?: boolean };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,7 +33,11 @@ const userSchema = new Schema<UserDoc>(
     role: { type: String, enum: ['owner', 'admin', 'staff'], default: 'staff' },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date },
+    pinHash: { type: String, select: false },
+    pinFailedAttempts: { type: Number, default: 0 },
+    pinLockedUntil: { type: Date },
     pushToken: { type: String },
+    notificationPrefs: { dailySummary: { type: Boolean }, driverUpdates: { type: Boolean } },
   },
   { timestamps: true }
 );

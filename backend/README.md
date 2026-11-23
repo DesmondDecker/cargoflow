@@ -47,11 +47,22 @@ response shape below matches what those clients already call, field-for-field.
 
 Three completely separate identity spaces, one shared mechanism:
 
-- **Agency staff** (`cargoflow-mobile`): register-agency / join / login with
-  `agencyCode` + shared agency password (bcrypt-hashed) + a per-user name
-  unique within the agency. Roles: `owner` / `admin` / `staff`.
+- **Agency staff** (`cargoflow-mobile`): the shared agency password only lets
+  new staff **join**. Everyone logs in with `agencyCode` + their name or phone
+  + **their own 6-digit PIN** (bcrypt-hashed, 5 wrong tries locks that account
+  for 15 minutes). Roles: `owner` / `admin` / `staff`. An owner (or an admin,
+  for staff) can reset a teammate's PIN; a platform admin can reset an agency's
+  only owner. Accounts created before PINs existed cannot sign in until given
+  one: `npm run reset:pin -- <AGENCY_CODE> "<name or phone>" <PIN>`.
 - **Drivers**: own collection, phone + password, nothing shared with agency staff.
 - **Platform admins** (`cargoflow-admin`): email + password, no public signup.
+  Roles: `super_admin` (everything, plus other admins, audit log, gateway phones),
+  `finance` (payments, expenses, plans, subscriptions, sponsorships), `support`
+  (agencies, drivers, warehouses, customs/AGL users), `viewer` (read-only). An
+  account with no stored role is treated as `super_admin`, so upgrading locks
+  nobody out. The last active super admin cannot be demoted or deactivated.
+  The dashboard keeps the refresh token in an httpOnly cookie and the access
+  token in memory only (see `ADMIN_COOKIE_SAMESITE`).
 
 Every access token is a JWT carrying an `aud` (audience) claim —
 `agency-app` / `driver-app` / `admin-app` — checked explicitly by each app's
@@ -62,8 +73,9 @@ one row per (subject, audience, device); rotating (via `/refresh`) always
 burns the presented token, so a replayed refresh token — stolen or reused
 after the legitimate client already rotated — is rejected outright.
 
-Changing an agency's shared password, deactivating a driver/admin, or
-suspending an agency revokes every relevant refresh token immediately.
+Changing your own PIN, resetting someone's PIN, deactivating a driver/admin/user, or
+suspending an agency revokes the relevant refresh tokens immediately. Changing the
+agency join password does not sign anyone out.
 
 ## What's real vs. what's a documented gap
 
@@ -80,20 +92,17 @@ nightly cron) computed from real container/document data.
 
 Documented, not built:
 
-- **Live vessel tracking** — `POST /containers/:id/refresh-tracking` is real
-  and wired up, but only refreshes the carrier *guess*; no live-position
-  third-party tracking API is integrated (each carrier has its own,
-  unspecified here).
-- **Mobile-money auto-verification** — `POST /gateway/sms-notifications`
+- **Live vessel tracking** — a lookup chain exists (carrier API, MarineTraffic,
+  public-page scraper, then generic public tracking; see
+  `src/services/tracking/registry.ts` and `.env.example`) but no credentials
+  are configured by default, so out of the box it only identifies the carrier
+  and links its public page. Maersk's gateway rejected the keys tried so far.
+- **Mobile-money auto-verification** — the phone-side app now exists (`../gateway-app`, foreground only, untested on a device). `POST /gateway/sms-notifications`
   parses and attempts to match a real SMS to a pending `Payment`
   (`src/services/smsParser.ts`), but the regexes are only tuned against
   publicly documented Orange Money / Afrimoney formats, not real captured
   messages. It moves a matched payment to `submitted`, not straight to
   `activated` — a platform admin still verifies via the dashboard.
-- **Push notifications** for new driver job assignments.
-- **Driver license/ID document upload screen** — the upload purpose and
-  presigned-URL flow exist (`license_document`), no endpoint calls it yet
-  because there's no driver-app source to wire it into.
 - Per-agency configurable status pipeline / document types / deadline day
   counts — currently fixed constants (`agencyController.ts`,
   `attentionEngine.ts`), not stored per agency.
@@ -107,3 +116,13 @@ creating an `Agency` then a `User` — the code manually deletes the first
 document if the second write fails, rather than reaching for a transaction
 this deployment can't run. If you switch to a replica-set Mongo (Atlas, for
 example), consider swapping that pattern for a real transaction.
+
+
+## Supervisors' oversight log (Customs and AGL)
+
+Every request a signed-in Customs or AGL user makes is written by the server to `InstitutionAuditLog`: sign-ins (including failed ones, with the email tried), records opened, approvals and returns (with the reason or approval reference), records entered for an agent, CSV downloads, report views, password changes, and refused attempts such as AGL reaching for the Customs queue. Timer-driven list refreshes are skipped so they don't bury the real entries. A route nobody listed is still logged under its method and path.
+
+- **Append-only:** the model refuses updates and deletes and no route offers them. (Someone with direct database access can still change data; protect the database accordingly.)
+- **Supervisors:** a platform admin ticks "Make supervisor" on a Customs/AGL account (`isSupervisor`). That person gets a *Staff activity* page in the portal showing their own institution's staff only: a 30-day summary per person (approvals, returns, records opened, downloads, refused requests, failed sign-ins, records the same officer entered and approved) and the full filterable log, with CSV export. Supervisors' own views of the log are logged too.
+- **Platform view:** super admins see both institutions, supervisors included, under *Customs & AGL activity* in the admin dashboard (`GET /platform-admin/institution-audit`).
+- **Not covered:** nothing is logged for a request with no valid login (no identity to record). Supervisors keep their normal Customs/AGL permissions; the log is a record, not a separation of duties.

@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { ZodError } from 'zod';
 import { AppError } from '../utils/AppError';
 import { env } from '../config/env';
 
@@ -9,7 +10,16 @@ export function notFoundHandler(req: Request, res: Response) {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({ success: false, error: { message: err.message, code: err.code } });
+    return res.status(err.statusCode).json({ success: false, error: { message: err.message, code: err.code, ...(err.details !== undefined ? { details: err.details } : {}) } });
+  }
+
+  // Request bodies and queries are checked with zod; a failed check is the
+  // caller's mistake (400), not a server fault (500).
+  if (err instanceof ZodError) {
+    const issues = err.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
+    const first = issues[0];
+    const message = first ? (first.path ? `${first.path}: ${first.message}` : first.message) : 'Invalid request';
+    return res.status(400).json({ success: false, error: { message, code: 'VALIDATION_ERROR', details: issues } });
   }
 
   // Mongoose validation / cast / duplicate-key errors: surface a clean

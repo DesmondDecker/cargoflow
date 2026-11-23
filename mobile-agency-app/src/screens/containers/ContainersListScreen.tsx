@@ -5,6 +5,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/Screen';
 import { Card } from '../../components/Card';
 import { AttentionBadge } from '../../components/AttentionBadge';
+import { StatusPill } from '../../components/StatusPill';
+import { usePrefsStore } from '../../store/prefsStore';
+import { daysFromNow, formatShortDate } from '../../utils/status';
 import { colors, spacing, typography } from '../../theme/theme';
 import { fetchContainers, fetchDashboardStats, resolveCode, trackCodes } from '../../api/containerApi';
 import { apiErrorMessage } from '../../api/client';
@@ -23,7 +26,7 @@ const FILTERS: { key: AttentionLevel | 'all'; label: string }[] = [
 
 export function ContainersListScreen({ navigation }: Props) {
   const [containers, setContainers] = useState<ContainerListItem[]>([]);
-  const [filter, setFilter] = useState<AttentionLevel | 'all'>('all');
+  const [filter, setFilter] = useState<AttentionLevel | 'all'>(usePrefsStore.getState().defaultContainerFilter);
   const [carrierFilter, setCarrierFilter] = useState<string | undefined>(undefined);
   const [carrierOptions, setCarrierOptions] = useState<{ name: string; count: number }[]>([]);
   const [search, setSearch] = useState('');
@@ -37,9 +40,14 @@ export function ContainersListScreen({ navigation }: Props) {
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable onPress={() => navigation.navigate('AddContainer')} hitSlop={12} style={styles.headerButton}>
-          <Text style={styles.headerButtonText}>+ Add</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          <Pressable onPress={() => navigation.navigate('ScanCode')} hitSlop={12} style={styles.headerButton}>
+            <Text style={styles.headerButtonText}>Scan</Text>
+          </Pressable>
+          <Pressable onPress={() => navigation.navigate('AddContainer')} hitSlop={12} style={styles.headerButton}>
+            <Text style={styles.headerButtonText}>+ Add</Text>
+          </Pressable>
+        </View>
       ),
     });
   }, [navigation]);
@@ -231,7 +239,7 @@ export function ContainersListScreen({ navigation }: Props) {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(filter, search, carrierFilter)} tintColor={colors.orange} />}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>No containers match this filter.</Text> : null}
+        ListEmptyComponent={loading ? undefined : <Text style={styles.empty}>No containers match this filter.</Text>}
         renderItem={({ item }) => (
           <Pressable
             onPress={() => navigation.navigate('ContainerCaseFile', { containerId: item._id, containerNumber: item.containerNumber })}
@@ -241,7 +249,12 @@ export function ContainersListScreen({ navigation }: Props) {
                 <Text style={styles.containerNumber}>{item.containerNumber}</Text>
                 <AttentionBadge level={item.attentionLevel} />
               </View>
-              <Text style={styles.status}>{item.status}</Text>
+              <View style={styles.statusRow}>
+                <StatusPill status={item.status} />
+                {item.liveTracking?.resolved && item.liveTracking.eta ? (
+                  <Text style={styles.meta}>ETA {formatShortDate(item.liveTracking.eta)}{(() => { const d = daysFromNow(item.liveTracking?.eta); return d === null ? '' : d === 0 ? ' · today' : d > 0 ? ` · ${d}d` : ` · ${-d}d ago`; })()}</Text>
+                ) : null}
+              </View>
               {item.attentionReasons.length > 0 ? (
                 <Text style={styles.reason} numberOfLines={2}>
                   {item.attentionReasons[0]}
@@ -334,6 +347,7 @@ const styles = StyleSheet.create({
   containerNumber: { ...typography.h3 },
   status: { ...typography.bodyMedium, color: colors.navy, marginBottom: 4 },
   reason: { ...typography.caption, color: colors.attention, marginBottom: spacing.xs },
+  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   metaRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   meta: { ...typography.caption },
 });

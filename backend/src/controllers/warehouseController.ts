@@ -12,6 +12,8 @@ import { warehouseSummary } from './warehouseAuthController';
 
 // ---- owner-facing: manage the listing itself ----
 
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const getMyProfile = asyncHandler(async (req: Request, res: Response) => {
   const warehouse = await WarehouseModel.findById(req.auth!.warehouseId);
   if (!warehouse) throw AppError.notFound('Warehouse not found');
@@ -174,7 +176,7 @@ export const fetchCandidateWarehouses = asyncHandler(async (req: Request, res: R
     availableCapacity: { $gt: 0 },
   };
   if (typeof req.query.location === 'string' && req.query.location.trim()) {
-    filter.location = new RegExp(req.query.location.trim(), 'i');
+    filter.location = new RegExp(escapeRegex(req.query.location.trim()), 'i'); // typed text is matched literally, not as a pattern
   }
 
   const now = new Date();

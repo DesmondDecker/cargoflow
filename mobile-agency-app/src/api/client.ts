@@ -5,7 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 const ACCESS_TOKEN_KEY = 'cargoflow_access_token';
 const REFRESH_TOKEN_KEY = 'cargoflow_refresh_token';
 
-const baseURL = (Constants.expoConfig?.extra?.apiBaseUrl as string) || 'http://localhost:4000/api/v1';
+export const baseURL = (Constants.expoConfig?.extra?.apiBaseUrl as string) || 'http://localhost:4000/api/v1';
 
 export const api = axios.create({ baseURL, timeout: 15000 });
 
@@ -110,7 +110,11 @@ api.interceptors.response.use(
       if (!refreshToken) throw new Error('No refresh token');
       const { data } = await axios.post(`${baseURL}/auth/refresh`, { refreshToken });
       const newAccessToken = data.data.accessToken as string;
-      await setTokens(newAccessToken);
+      // The backend rotates refresh tokens: the one just used is now revoked
+      // and a new one is returned. Storing only the access token left the
+      // revoked refresh token on the device, so the next refresh failed and
+      // the user was logged out.
+      await setTokens(newAccessToken, data.data.refreshToken as string | undefined);
       flushQueue(null, newAccessToken);
       original.headers = original.headers || {};
       original.headers.Authorization = `Bearer ${newAccessToken}`;

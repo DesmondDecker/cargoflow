@@ -8,16 +8,30 @@ export type AuthStackParamList = {
 export type MainTabParamList = {
   Dashboard: undefined;
   Containers: undefined;
-  Documents: undefined;
+  Tracking: undefined;
+  Finance: undefined;
   More: undefined;
+};
+
+export type TrackingStackParamList = {
+  TrackingList: undefined;
+  TrackingTimeline: { containerId: string; containerNumber?: string };
+};
+
+export type FinanceHomeStackParamList = {
+  FinanceHome: undefined;
 };
 
 export type ContainersStackParamList = {
   ContainersList: undefined;
   ContainerCaseFile: { containerId: string; containerNumber?: string };
   FindDriver: { containerId: string };
+  FindStorage: { containerId: string };
+  ContainerLetters: { containerId: string };
+  LetterEditor: { letterId: string };
   DocumentScanner: { containerId: string; importerId: string; blId?: string; documentType: string };
   AddContainer: undefined;
+  ScanCode: undefined;
   Finance: { containerId: string; importerId?: string; importerName?: string };
   RecordExpense: { containerId: string };
   RecordPayment: { containerId: string; importerId?: string; importerName?: string };
@@ -26,13 +40,16 @@ export type ContainersStackParamList = {
 export type ImportersStackParamList = {
   ImportersList: undefined;
   ImporterProfile: { importerId: string; importerName?: string };
-  AddImporter: undefined;
+  AddImporter: { importerId?: string } | undefined;
 };
 
 export type DashboardStackParamList = {
   DashboardHome: undefined;
   ContainerCaseFile: { containerId: string; containerNumber?: string };
   FindDriver: { containerId: string };
+  FindStorage: { containerId: string };
+  ContainerLetters: { containerId: string };
+  LetterEditor: { letterId: string };
   DocumentScanner: { containerId: string; importerId: string; blId?: string; documentType: string };
   Finance: { containerId: string; importerId?: string; importerName?: string };
   RecordExpense: { containerId: string };
@@ -56,4 +73,16 @@ export type MoreStackParamList = {
   AddDemurrageTerm: { existing?: import('../api/agencyApi').DemurrageTerm } | undefined;
   EditAgencyProfile: undefined;
   EditLabels: undefined;
+  Documents: undefined; // nested DocumentsNavigator
+  Notifications: undefined;
+  AppPreferences: undefined;
+  Team: undefined;
+  Rules: undefined;
+  Reports: undefined;
+  StorageBookings: undefined;
+  ChangeAgencyPassword: undefined;
+  ChangeMyPin: undefined;
+  ResetPin: { userId: string; name: string };
+  CustomsSubmissions: undefined;
+  CustomsSubmission: { submissionId?: string; prefill?: Partial<import('../types/api').CustomsFields> } | undefined;
 };

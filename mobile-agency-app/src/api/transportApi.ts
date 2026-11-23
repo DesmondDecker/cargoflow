@@ -18,6 +18,8 @@ export async function assignDriver(
     requiredDate?: string;
     contactName?: string;
     contactPhone?: string;
+    fee?: number;
+    currency?: string;
   }
 ) {
   const { data } = await api.post<ApiEnvelope<{ assignment: TransportAssignment }>>(

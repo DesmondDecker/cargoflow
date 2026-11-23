@@ -10,7 +10,9 @@
     "splash": {
       "backgroundColor": "#0B1F3A"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.summittechnologies.cargoflow"
@@ -36,7 +38,10 @@
         {
           "photosPermission": "CargoFlow accesses your photos so you can attach scanned or photographed documents to a container."
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-status-bar"
     ],
     "extra": {
       "apiBaseUrl": "https://api.cargoflow.example.com/api/v1"

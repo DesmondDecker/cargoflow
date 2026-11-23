@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AdoptionSection } from '../components/AdoptionSection';
 import { fetchAnalytics } from '../api/adminApi';
 import { apiErrorMessage } from '../api/client';
 import { Analytics } from '../types';
@@ -99,6 +100,7 @@ export function DashboardPage() {
           ))}
         </div>
       </div>
+      <AdoptionSection />
     </div>
   );
 }

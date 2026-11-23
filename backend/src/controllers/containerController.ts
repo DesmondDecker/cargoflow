@@ -6,17 +6,22 @@ import { AppError } from '../utils/AppError';
 import { ContainerModel, ContainerStatus } from '../models/Container';
 import { CargoDocumentModel } from '../models/CargoDocument';
 import { BillOfLadingModel } from '../models/BillOfLading';
+import { AgencyModel } from '../models/Agency';
 import { ImporterModel } from '../models/Importer';
 import { UserModel } from '../models/User';
 import { ActivityLogModel } from '../models/ActivityLog';
 import { validateContainerNumber, guessShippingLine, agencyHistoryConfidence } from '../services/carrierDetection';
 import { AgencyCarrierPrefixOverrideModel } from '../models/AgencyCarrierPrefixOverride';
 import { AgencyDemurrageTermModel } from '../models/AgencyDemurrageTerm';
-import { getTrackingProvider, PUBLIC_TRACKER_URLS } from '../services/tracking/registry';
+import { describeTrackingSources, getTrackingProvider, PUBLIC_TRACKER_URLS } from '../services/tracking/registry';
+import { applyGenericTracking, applyTrackingResult } from '../services/tracking/trackingRefresh';
+import { resolveRules } from '../services/agencyRules';
 import { computeDeadlines } from '../services/deadlineEngine';
 import { computeAttention } from '../services/attentionEngine';
 import { STATUS_KEYS } from '../constants/containerPipeline';
 import { buildExternalTrackingLookup, normalizeTrackingCodes } from './searchController';
+import { parseCarrierTrackingPage, PageParseError } from '../services/tracking/pastedPageParser';
+import { extractGenericTracking } from '../services/tracking/genericPageExtractor';
 
 // Recomputes numberValidation/shippingLineDetection/deadlines/attention from
 // the container's current stored fields, and persists the result. Called
@@ -87,19 +92,19 @@ export async function recomputeDerivedFields(containerId: string): Promise<void>
     }
   }
 
-  container.deadlines = computeDeadlines(
-    { discharged: container.dates.discharged, arrival: container.dates.arrival },
-    new Date(),
-    container.shippingLine
-      ? await AgencyDemurrageTermModel.findOne({ agencyId: container.agencyId, shippingLine: container.shippingLine }).then(
-          (term) => term ? { freeStorageDays: term.freeStorageDays, demurrageGraceDays: term.demurrageGraceDays } : undefined
-        )
-      : undefined
-  );
+  // The agency's own rules (fallback storage/grace days, attention window) are
+  // laid over the built-in defaults; a carrier-specific term still wins.
+  const agency = await AgencyModel.findById(container.agencyId).select('rules');
+  const rules = resolveRules(agency?.rules);
+  const term = container.shippingLine ? await AgencyDemurrageTermModel.findOne({ agencyId: container.agencyId, shippingLine: container.shippingLine }) : null;
+  container.deadlines = computeDeadlines({ discharged: container.dates.discharged, arrival: container.dates.arrival }, new Date(), {
+    freeStorageDays: term?.freeStorageDays ?? rules.defaultFreeStorageDays,
+    demurrageGraceDays: term?.demurrageGraceDays ?? rules.defaultGraceDays,
+  });
 
   const docs = await CargoDocumentModel.find({ containerId: container._id, deletedAt: null });
   const typesPresent = new Set(docs.map((d) => d.documentType));
-  const attention = computeAttention(container, typesPresent);
+  const attention = computeAttention(container, typesPresent, new Date(), { windowDays: rules.attentionWindowDays });
   container.attentionLevel = attention.attentionLevel;
   container.attentionReasons = attention.attentionReasons;
   container.attentionRank = attention.attentionRank;
@@ -128,6 +133,14 @@ export function listItemShape(c: {
     eta?: Date;
     source: string;
     publicTrackingUrl?: string;
+    originPlace?: string;
+    destinationPlace?: string;
+    departedAt?: Date;
+    latestEvent?: { description: string; location?: string; facility?: string; at?: Date };
+    eventsCompleted?: number;
+    carrierUpdatedNote?: string;
+    recordedAt?: Date;
+    recordedByName?: string;
   };
 }) {
   return {
@@ -221,7 +234,7 @@ export const fetchContainerCaseFile = asyncHandler(async (req: Request, res: Res
   const container = await ContainerModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId })
     .populate('importerId', 'name')
     .populate('assignedOfficerId', 'name')
-    .populate('blId', 'blNumber shippingLine vesselName')
+    .populate('blId', 'blNumber shippingLine vesselName portOfLoading portOfDischarge')
     .populate('statusHistory.changedBy', 'name');
   if (!container) throw AppError.notFound('Container not found');
 
@@ -301,8 +314,10 @@ export const createContainer = asyncHandler(async (req: Request, res: Response) 
   const bl = await BillOfLadingModel.findOne({ _id: input.blId, agencyId: req.auth!.agencyId });
   if (!bl) throw AppError.notFound('Bill of lading not found');
 
+  const agencyRules = resolveRules((await AgencyModel.findById(req.auth!.agencyId).select('rules'))?.rules);
   const container = await ContainerModel.create({
     agencyId: req.auth!.agencyId,
+    requiredDocumentTypes: agencyRules.requiredDocumentTypes,
     importerId: importer._id,
     blId: bl._id,
     containerNumber: input.containerNumber,
@@ -491,25 +506,19 @@ export const refreshContainerTracking = asyncHandler(async (req: Request, res: R
   const bl = container.blId as unknown as { vesselName?: string } | null;
   const publicTrackingUrl = carrierName ? PUBLIC_TRACKER_URLS[carrierName] : undefined;
 
-  // Real carrier API first (only exists once that carrier's own credentials
-  // are configured — see services/tracking/registry.ts). Falls back to the
-  // BIC-prefix guess when no provider is configured for this carrier, or
-  // when the live call itself fails — the failure is labeled in `source`
-  // rather than silently downgraded to the guess with no explanation.
+  // The lookup chain for this carrier: its own API, then MarineTraffic, then the
+  // public-page scraper (see services/tracking/registry.ts). If none of them
+  // answers, or none is configured, generic public tracking applies: the
+  // carrier is identified from the container prefix and linked. Tracking a
+  // person captured from the carrier's page is never erased by a failed lookup.
+  const ctx = { guessedCarrier: guess.guess, blVesselName: bl?.vesselName, publicTrackingUrl };
   const provider = getTrackingProvider(carrierName);
+  const live = container.liveTracking as unknown as import('../services/tracking/trackingRefresh').LiveTrackingValue | undefined;
   if (provider) {
-    const result = await provider.fetchTracking(container.containerNumber);
-    container.liveTracking = { ...result, publicTrackingUrl };
+    const result = await provider.fetchTracking(container.containerNumber, { carrierName, externalRef: live?.externalRef });
+    applyTrackingResult(container as never, result, ctx);
   } else {
-    container.liveTracking = {
-      resolved: !!guess.guess,
-      carrierName: guess.guess,
-      status: guess.guess ? 'Carrier identified — no live tracking source configured for this line' : 'Unable to identify carrier from container number',
-      vesselName: container.vessel || bl?.vesselName,
-      eta: container.liveTracking?.eta,
-      source: 'bic_owner_code_table',
-      publicTrackingUrl,
-    };
+    applyGenericTracking(container as never, ctx);
   }
   await container.save();
 
@@ -517,3 +526,145 @@ export const refreshContainerTracking = asyncHandler(async (req: Request, res: R
 
   return ok(res, { liveTracking: container.liveTracking });
 });
+
+
+// No-API tracking: staff copy the result from the carrier's public tracking
+// page and paste it here. Nothing calls a carrier. The parsed values are
+// stored on liveTracking with source 'pasted:maersk_page' and who recorded
+// them and when, so the app can show them as "recorded from carrier page",
+// never as live data. Does not change status or the dates that drive
+// deadlines: staff still confirm those themselves.
+const pasteTrackingSchema = z.object({ text: z.string().min(20, 'Paste the tracking result from the carrier page').max(20000) });
+
+export const applyPastedTracking = asyncHandler(async (req: Request, res: Response) => {
+  const { text } = pasteTrackingSchema.parse(req.body);
+  const container = await ContainerModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId }).populate('blId', 'blNumber vesselName');
+  if (!container) throw AppError.notFound('Container not found');
+
+  let parsed;
+  try {
+    parsed = parseCarrierTrackingPage(text);
+  } catch (err) {
+    if (err instanceof PageParseError) throw AppError.badRequest(err.message, 'TRACKING_PARSE_FAILED');
+    throw err;
+  }
+
+  const match = parsed.containers.find((c) => c.containerNumber === container.containerNumber);
+  if (!match) {
+    const found = parsed.containers.map((c) => c.containerNumber).join(', ');
+    throw AppError.badRequest(`The pasted tracking is for ${found}, not ${container.containerNumber}. Nothing was changed.`, 'TRACKING_CONTAINER_MISMATCH');
+  }
+
+  const bl = container.blId as unknown as { blNumber?: string; vesselName?: string } | null;
+  const warnings: string[] = [];
+  if (parsed.blNumber && bl?.blNumber && parsed.blNumber !== bl.blNumber.replace(/\s+/g, '').toUpperCase()) {
+    warnings.push(`The pasted BL number (${parsed.blNumber}) differs from this container's BL (${bl.blNumber}).`);
+  }
+  if (container.shippingLine && container.shippingLine !== parsed.carrier) {
+    warnings.push(`This container is recorded under ${container.shippingLine}, but the pasted page is from ${parsed.carrier}.`);
+  }
+
+  const actor = await UserModel.findById(req.auth!.userId);
+  const latest = match.latestEvent;
+  container.liveTracking = {
+    resolved: true,
+    carrierName: parsed.carrier,
+    status: latest?.description || (match.arrival ? 'Arrival date recorded from carrier page' : 'Departure recorded from carrier page'),
+    vesselName: container.liveTracking?.vesselName || container.vessel || bl?.vesselName,
+    eta: match.arrival?.date,
+    source: 'pasted:maersk_page',
+    publicTrackingUrl: PUBLIC_TRACKER_URLS[parsed.carrier],
+    originPlace: match.origin ? `${match.origin.name}${match.origin.country ? ', ' + match.origin.country : ''}` : undefined,
+    destinationPlace: match.destination ? `${match.destination.name}${match.destination.country ? ', ' + match.destination.country : ''}` : undefined,
+    departedAt: match.departure?.date,
+    latestEvent: latest ? { description: latest.description, location: latest.location, facility: latest.facility, at: latest.at } : undefined,
+    eventsCompleted: match.eventsCompleted,
+    carrierUpdatedNote: parsed.lastUpdatedText,
+    recordedAt: new Date(),
+    recordedByName: actor?.name || 'User',
+  };
+  container.version += 1;
+  await container.save();
+
+  await ActivityLogModel.create({
+    agencyId: req.auth!.agencyId,
+    containerId: container._id,
+    actorName: actor?.name || 'User',
+    actorUserId: actor?._id,
+    action: 'tracking_pasted',
+    description: latest ? `Recorded from carrier page: ${latest.description}` : 'Recorded tracking from carrier page',
+    details: { source: 'pasted:maersk_page', blNumber: parsed.blNumber },
+  });
+
+  return ok(res, { liveTracking: container.liveTracking, warnings });
+});
+
+
+// Tracking text from a carrier this app has no exact reader for. Step 1:
+// read it with the generic heuristics and send back a PROPOSAL. Nothing is
+// saved; the app shows it to the user to correct.
+export const previewPastedTracking = asyncHandler(async (req: Request, res: Response) => {
+  const { text } = pasteTrackingSchema.parse(req.body);
+  const container = await ContainerModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId });
+  if (!container) throw AppError.notFound('Container not found');
+  const proposal = extractGenericTracking(text, container.containerNumber);
+  return ok(res, { proposal });
+});
+
+const saveReviewedSchema = z.object({
+  carrierName: z.string().trim().min(1).max(60),
+  status: z.string().trim().min(1).max(120),
+  vesselName: z.string().trim().max(80).optional(),
+  eta: z.coerce.date().optional(),
+  departedAt: z.coerce.date().optional(),
+  latestEvent: z
+    .object({
+      description: z.string().trim().min(1).max(200),
+      location: z.string().trim().max(120).optional(),
+      at: z.coerce.date().optional(),
+    })
+    .optional(),
+});
+
+// Step 2: the user has reviewed (and possibly corrected) the proposal. What
+// is stored is what they confirmed, labelled as recorded from the carrier's
+// page by that user, never as live data.
+export const saveReviewedTracking = asyncHandler(async (req: Request, res: Response) => {
+  const input = saveReviewedSchema.parse(req.body);
+  const container = await ContainerModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId });
+  if (!container) throw AppError.notFound('Container not found');
+
+  const actor = await UserModel.findById(req.auth!.userId);
+  container.liveTracking = {
+    resolved: true,
+    carrierName: input.carrierName,
+    status: input.status,
+    vesselName: input.vesselName || container.liveTracking?.vesselName || container.vessel,
+    eta: input.eta,
+    source: 'pasted:reviewed_page',
+    publicTrackingUrl: PUBLIC_TRACKER_URLS[input.carrierName],
+    departedAt: input.departedAt,
+    latestEvent: input.latestEvent,
+    recordedAt: new Date(),
+    recordedByName: actor?.name || 'User',
+  };
+  container.version += 1;
+  await container.save();
+
+  await ActivityLogModel.create({
+    agencyId: req.auth!.agencyId,
+    containerId: container._id,
+    actorName: actor?.name || 'User',
+    actorUserId: actor?._id,
+    action: 'tracking_pasted',
+    description: `Recorded from ${input.carrierName} page: ${input.status}`,
+    details: { source: 'pasted:reviewed_page' },
+  });
+
+  return ok(res, { liveTracking: container.liveTracking });
+});
+
+
+// Which live sources are switched on for each carrier, for the settings
+// screen. Says what is configured, not whether a source currently works.
+export const getTrackingSources = asyncHandler(async (_req: Request, res: Response) => ok(res, { carriers: describeTrackingSources() }));

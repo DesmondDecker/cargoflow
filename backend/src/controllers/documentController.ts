@@ -4,6 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/apiResponse';
 import { AppError } from '../utils/AppError';
 import { CargoDocumentModel } from '../models/CargoDocument';
+import { UserModel } from '../models/User';
 import { ActivityLogModel } from '../models/ActivityLog';
 import { createPresignedUploadUrl } from '../services/storageService';
 import { recomputeDerivedFields } from './containerController';
@@ -17,6 +18,9 @@ function documentShape(d: {
   containerId?: unknown;
   versions: { versionNumber: number; fileKey: string; fileUrl: string; mimeType: string; uploadedAt: Date }[];
   currentVersion: number;
+  reviewStatus?: string;
+  reviewedAt?: Date;
+  reviewedByName?: string;
   createdAt: Date;
 }) {
   return {
@@ -27,6 +31,9 @@ function documentShape(d: {
     containerId: d.containerId,
     versions: d.versions.map((v) => ({ versionNumber: v.versionNumber, fileKey: v.fileKey, fileUrl: v.fileUrl, mimeType: v.mimeType, uploadedAt: v.uploadedAt, downloadUrl: v.fileUrl })),
     currentVersion: d.currentVersion,
+    reviewStatus: d.reviewStatus ?? 'pending_review',
+    reviewedAt: d.reviewedAt,
+    reviewedByName: d.reviewedByName,
     createdAt: d.createdAt,
   };
 }
@@ -93,6 +100,11 @@ export const registerDocument = asyncHandler(async (req: Request, res: Response)
   if (document) {
     document.versions.push(versionEntry as unknown as (typeof document.versions)[number]);
     document.currentVersion = versionEntry.versionNumber;
+    // The checked file is no longer the current one.
+    document.reviewStatus = 'pending_review';
+    document.reviewedAt = undefined;
+    document.reviewedByName = undefined;
+    document.reviewedByUserId = undefined;
     await document.save();
   } else {
     document = await CargoDocumentModel.create({
@@ -143,4 +155,34 @@ export const deleteDocument = asyncHandler(async (req: Request, res: Response) =
   }
 
   return res.status(204).send();
+});
+
+
+const reviewSchema = z.object({ status: z.enum(['verified', 'pending_review']) });
+
+// Mark a document as checked (or send it back to "needs review"). Anyone on
+// the team can do it; who did it and when is kept, and shown.
+export const reviewDocument = asyncHandler(async (req: Request, res: Response) => {
+  const { status } = reviewSchema.parse(req.body);
+  const document = await CargoDocumentModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId, deletedAt: null });
+  if (!document) throw AppError.notFound('Document not found');
+  const user = await UserModel.findById(req.auth!.userId);
+
+  document.reviewStatus = status;
+  document.reviewedAt = status === 'verified' ? new Date() : undefined;
+  document.reviewedByName = status === 'verified' ? user?.name || 'User' : undefined;
+  document.reviewedByUserId = status === 'verified' ? (req.auth!.userId as never) : undefined;
+  await document.save();
+
+  if (document.containerId) {
+    await ActivityLogModel.create({
+      agencyId: req.auth!.agencyId,
+      containerId: document.containerId,
+      actorName: user?.name || 'User',
+      actorUserId: req.auth!.userId,
+      action: status === 'verified' ? 'document_verified' : 'document_review_requested',
+      details: { documentType: document.documentType },
+    });
+  }
+  return ok(res, { document: documentShape(document) });
 });

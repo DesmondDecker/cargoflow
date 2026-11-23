@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { colors, spacing, typography } from '../../theme/theme';
 import { fetchCandidateDrivers, assignDriver } from '../../api/transportApi';
 import { apiErrorMessage } from '../../api/client';
+import { cacheGet, cacheSet, enqueueOutbox, isNetworkError } from '../../offline/outbox';
 import { DriverCandidate } from '../../types/api';
 import { ContainersStackParamList } from '../../navigation/types';
 
@@ -24,6 +25,7 @@ export function FindDriverScreen({ route, navigation }: Props) {
   const [selected, setSelected] = useState<DriverCandidate | null>(null);
   const [pickupLocation, setPickupLocation] = useState('');
   const [destination, setDestination] = useState('');
+  const [fee, setFee] = useState('');
   const [assigning, setAssigning] = useState(false);
 
   const load = useCallback(async () => {
@@ -33,8 +35,16 @@ export function FindDriverScreen({ route, navigation }: Props) {
       const result = await fetchCandidateDrivers(containerId);
       setDrivers(result.drivers);
       setContainerSize(result.containerSize);
+      cacheSet(`candidates:${containerId}`, result);
     } catch (err) {
-      setError(apiErrorMessage(err));
+      const saved = isNetworkError(err) ? cacheGet<{ drivers: DriverCandidate[]; containerSize?: string }>(`candidates:${containerId}`) : undefined;
+      if (saved) {
+        setDrivers(saved.drivers);
+        setContainerSize(saved.containerSize);
+        setError('Offline: showing the drivers as last seen. Availability may have changed; an assignment is sent when you are back online and refused if the driver is no longer free.');
+      } else {
+        setError(apiErrorMessage(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -47,6 +57,11 @@ export function FindDriverScreen({ route, navigation }: Props) {
   );
 
   const onAssign = async () => {
+    const feeNumber = fee.trim() === '' ? undefined : Number(fee.replace(/,/g, ''));
+    if (feeNumber !== undefined && (!Number.isFinite(feeNumber) || feeNumber < 0)) {
+      Alert.alert('Check the fee', 'Enter the fee as a number, or leave it empty.');
+      return;
+    }
     if (!selected || !pickupLocation.trim() || !destination.trim()) {
       Alert.alert('Missing info', 'Enter both a pickup location and destination.');
       return;
@@ -63,12 +78,24 @@ export function FindDriverScreen({ route, navigation }: Props) {
         vehicleId: vehicle._id,
         pickupLocation: pickupLocation.trim(),
         destination: destination.trim(),
+        fee: feeNumber,
       });
-      Alert.alert('Driver Assigned', `${selected.name} has been notified.`, [
+      Alert.alert('Driver Assigned', `${selected.name} will see the job in the CargoFlow Driver app, and gets a notification if they have them turned on.`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {
-      Alert.alert('Could not assign driver', apiErrorMessage(err));
+      if (isNetworkError(err)) {
+        // No signal: keep the request and send it when online. The server
+        // refuses it then if the driver is no longer free, and you are told.
+        enqueueOutbox('driver_assign', {
+          containerId,
+          driverName: selected.name,
+          input: { driverId: selected._id, vehicleId: vehicle._id, pickupLocation: pickupLocation.trim(), destination: destination.trim(), fee: feeNumber },
+        });
+        Alert.alert('Saved on this phone', `You are offline. The request to ${selected.name} will be sent when you are back online. If they are no longer free by then, you will be told.`, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+      } else {
+        Alert.alert('Could not assign driver', apiErrorMessage(err));
+      }
     } finally {
       setAssigning(false);
     }
@@ -120,6 +147,7 @@ export function FindDriverScreen({ route, navigation }: Props) {
           <Text style={styles.assignTitle}>Assign {selected.name}</Text>
           <Field label="Pickup Location" placeholder="e.g. Queen Elizabeth II Quay" value={pickupLocation} onChangeText={setPickupLocation} />
           <Field label="Destination" placeholder="e.g. ABC Trading Warehouse, Freetown" value={destination} onChangeText={setDestination} />
+          <Field label="Agreed fee in SLE (optional)" placeholder="e.g. 1500" value={fee} onChangeText={setFee} keyboardType="numeric" />
           <Button title="Assign Driver" onPress={onAssign} loading={assigning} />
         </View>
       ) : null}
