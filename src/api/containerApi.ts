@@ -42,7 +42,23 @@ export async function refreshContainerTracking(id: string) {
 }
 
 export async function resolveCode(code: string) {
-  const { data } = await api.get<ApiEnvelope<{ type: string; id?: string; containerNumber?: string; blNumber?: string; code?: string }>>(
+  const { data } = await api.get<ApiEnvelope<{
+    type: string;
+    id?: string;
+    containerNumber?: string;
+    blNumber?: string;
+    code?: string;
+    carrierName?: string;
+    publicTrackingUrl?: string;
+    detection?: {
+      type: 'container' | 'bill_of_lading' | 'unknown';
+      carrierName?: string;
+      confidence: 'high' | 'medium' | 'low';
+      carrierConfidence: 'high' | 'medium' | 'low';
+      source: string;
+      containerNumberValidation?: { formatValid: boolean; checkDigitValid: boolean | null; issue?: string };
+    };
+  }>>(
     `/search/resolve/${encodeURIComponent(code)}`
   );
   return data.data;

@@ -22,9 +22,14 @@ export const ONBOARDING_SLIDES: OnboardingSlide[] = [
     description: 'Connect with verified drivers and vehicles, assign jobs, track deliveries, and get proof of delivery — all in one place.',
   },
   {
+    icon: '🛃',
+    title: 'Customs Verification',
+    description: 'Send transaction details for review, track pending submissions, and see approval references or corrections in the Customs tab.',
+  },
+  {
     icon: '🔔',
     title: 'Smart Alerts & Deadlines',
     description:
-      'Get notified about Bolloré periods, missing documents, inactivity, and other critical updates before they become costly.',
+      'Get notified about free-time deadlines, missing documents, inactivity and other critical updates before they become costly.',
   },
 ];

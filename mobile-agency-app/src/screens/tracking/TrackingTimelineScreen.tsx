@@ -85,6 +85,8 @@ export function TrackingTimelineScreen({ route, navigation }: Props) {
               {lt.originPlace || lt.destinationPlace ? <Text style={typography.caption}>{lt.originPlace || '—'} → {lt.destinationPlace || '—'}</Text> : null}
               {lt.departedAt ? <Text style={typography.caption}>Departed {formatShortDate(lt.departedAt)}</Text> : null}
               {lt.eta ? <Text style={typography.caption}>ETA {formatShortDate(lt.eta)}{days !== null ? ` (${days === 0 ? 'today' : days > 0 ? `in ${days} day${days === 1 ? '' : 's'}` : `${-days} day${days === -1 ? '' : 's'} ago`})` : ''}</Text> : null}
+              {lt.eventsCompleted ? <Text style={typography.caption}>{lt.eventsCompleted} tracking events completed</Text> : null}
+              {lt.checkedAt ? <Text style={typography.caption}>Automatically checked {formatShortDateTime(lt.checkedAt)}</Text> : null}
               <Text style={styles.note}>
                 {pasted
                   ? `Recorded from the carrier page${lt.recordedByName ? ` by ${lt.recordedByName}` : ''}${lt.recordedAt ? ` on ${formatShortDateTime(lt.recordedAt)}` : ''}. Not live.`
@@ -92,7 +94,7 @@ export function TrackingTimelineScreen({ route, navigation }: Props) {
               </Text>
             </>
           ) : (
-            <Text style={typography.caption}>No carrier tracking saved yet. Open the case file and tap Track to look it up and capture it.</Text>
+            <Text style={typography.caption}>No automatic carrier update is available yet. Background checks run daily for supported lines; open the case file to request a refresh now.</Text>
           )}
         </Card>
 

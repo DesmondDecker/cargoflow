@@ -69,18 +69,24 @@ export class DcsaTrackingProvider implements TrackingProvider {
     return accessToken;
   }
 
-  async fetchTracking(containerNumber: string): Promise<TrackingResult> {
+  async fetchTracking(containerNumber: string, ctx?: import('./types').TrackingContext): Promise<TrackingResult> {
     try {
       const token = await this.getAccessToken();
 
-      // DCSA Track & Trace: GET /events, filtered by equipment reference
-      // (the container number) and event type, most recent first. Exact
+      // DCSA Track & Trace: GET /events, filtered by equipment or transport
+      // document reference and event type, most recent first. Exact
       // query-param naming can vary slightly by carrier's own gateway even
       // when the payload shape is DCSA-conformant — confirm against the
       // specific carrier's published OpenAPI spec on their developer portal
       // before going live.
       const response = await axios.get(`${this.config.apiBaseUrl}/events`, {
-        params: { equipmentReference: containerNumber, limit: 20, sort: '-eventDateTime' },
+        params: {
+          ...(ctx?.referenceType === 'bill_of_lading'
+            ? { transportDocumentReference: containerNumber }
+            : { equipmentReference: containerNumber }),
+          limit: 20,
+          sort: '-eventDateTime',
+        },
         headers: {
           Authorization: `Bearer ${token}`,
           ...(this.config.consumerKey ? { 'Consumer-Key': this.config.consumerKey } : {}),

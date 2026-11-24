@@ -112,6 +112,72 @@ export interface ShippingLineGuess {
   source: string;
 }
 
+export type ShippingIdentifierType = 'container' | 'bill_of_lading' | 'unknown';
+export type DetectionConfidence = 'high' | 'medium' | 'low';
+
+export interface ShippingIdentifierDetection {
+  type: ShippingIdentifierType;
+  normalizedCode: string;
+  carrierName?: string;
+  confidence: DetectionConfidence;
+  carrierConfidence: DetectionConfidence;
+  source: string;
+  containerNumberValidation?: NumberValidation;
+}
+
+const BILL_OF_LADING_PREFIX_TO_LINE: Record<string, string> = {
+  MAEU: 'Maersk',
+  MRKU: 'Maersk',
+  MSCU: 'MSC',
+  MEDU: 'MSC',
+  CMDU: 'CMA CGM',
+  CMAU: 'CMA CGM',
+  CGMU: 'CMA CGM',
+  HLCU: 'Hapag-Lloyd',
+  HLBU: 'Hapag-Lloyd',
+  HLXU: 'Hapag-Lloyd',
+};
+
+export function detectShippingIdentifier(raw: string): ShippingIdentifierDetection {
+  const normalizedCode = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const containerShape = /^[A-Z]{4}\d{7}$/.test(normalizedCode);
+
+  if (containerShape) {
+    const containerNumberValidation = validateContainerNumber(normalizedCode);
+    const carrier = guessShippingLine(normalizedCode);
+    return {
+      type: 'container',
+      normalizedCode,
+      carrierName: carrier.guess,
+      confidence: containerNumberValidation.checkDigitValid ? 'high' : 'medium',
+      carrierConfidence: carrier.confidence,
+      source: 'iso_6346_format',
+      containerNumberValidation,
+    };
+  }
+
+  if (/^[A-Z0-9]{5,35}$/.test(normalizedCode)) {
+    const prefix = normalizedCode.slice(0, 4);
+    const carrierName = BILL_OF_LADING_PREFIX_TO_LINE[prefix] || guessShippingLine(normalizedCode).guess;
+    return {
+      type: 'bill_of_lading',
+      normalizedCode,
+      carrierName,
+      confidence: 'medium',
+      carrierConfidence: carrierName ? 'high' : 'low',
+      source: carrierName ? 'bill_of_lading_carrier_prefix' : 'generic_bill_of_lading_format',
+    };
+  }
+
+  return {
+    type: 'unknown',
+    normalizedCode,
+    confidence: 'low',
+    carrierConfidence: 'low',
+    source: 'unrecognized_format',
+  };
+}
+
 // How many times an agency has to repeat the same correction for a prefix
 // the global table doesn't know before that correction is trusted at 'high'
 // confidence rather than 'medium'. One correction could be a mistake;

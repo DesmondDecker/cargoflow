@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from './Button';
 import { Field } from './Field';
 import { CARRIERS } from '../constants/carriers';
@@ -23,6 +25,7 @@ export function CarrierPickerModal({ visible, current, saving, error, onSelect, 
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <StatusBar style="dark" />
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Select carrier</Text>

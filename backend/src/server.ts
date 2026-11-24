@@ -31,8 +31,8 @@ async function main() {
 
   // 08:30 — live carrier tracking refresh + push notifications. Kept
   // separate from the 05:30 digest job because this one calls out to real
-  // external APIs (Maersk/CMA CGM, once configured) and can be slower/flakier
-  // than the pure-DB digest computation. '30 8 * * *' with no explicit
+  // carrier APIs and public tracking pages, so it can be slower/flakier than
+  // the pure-DB digest computation. '30 8 * * *' with no explicit
   // timezone is correct for Sierra Leone specifically because Africa/Freetown
   // is UTC+0 year-round (no DST) — if this server is ever deployed somewhere
   // else, or serves agencies outside Sierra Leone, pin TZ explicitly.

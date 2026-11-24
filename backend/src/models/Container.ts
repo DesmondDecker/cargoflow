@@ -58,6 +58,7 @@ export interface ContainerDoc {
     latestEvent?: { description: string; location?: string; facility?: string; at?: Date };
     eventsCompleted?: number;
     carrierUpdatedNote?: string; // e.g. "16 hours ago", as shown on the carrier page
+    checkedAt?: Date;
     externalRef?: string; // id a tracking service gave this container (MarineTraffic shipment id)
     recordedAt?: Date;
     recordedByName?: string;
@@ -126,6 +127,7 @@ const containerSchema = new Schema<ContainerDoc>(
       },
       eventsCompleted: Number,
       carrierUpdatedNote: String,
+      checkedAt: Date,
       externalRef: String,
       recordedAt: Date,
       recordedByName: String,

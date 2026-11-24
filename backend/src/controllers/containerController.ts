@@ -139,6 +139,7 @@ export function listItemShape(c: {
     latestEvent?: { description: string; location?: string; facility?: string; at?: Date };
     eventsCompleted?: number;
     carrierUpdatedNote?: string;
+    checkedAt?: Date;
     recordedAt?: Date;
     recordedByName?: string;
   };
@@ -493,10 +494,9 @@ export const setShippingLine = asyncHandler(async (req: Request, res: Response) 
 });
 
 // Refreshes live tracking for the container. Not purely cosmetic: this
-// calls the real carrier API when one is configured for this carrier (see
-// services/tracking/registry.ts — Maersk/CMA CGM/Hapag-Lloyd today, more
-// once credentials are set), and only falls back to the BIC-prefix guess
-// when no provider is configured or the live call itself fails.
+// calls a configured carrier API or public tracking provider (see
+// services/tracking/registry.ts), and only falls back to the BIC-prefix
+// guess when no provider is configured or the live call itself fails.
 export const refreshContainerTracking = asyncHandler(async (req: Request, res: Response) => {
   const container = await ContainerModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId }).populate('blId', 'vesselName');
   if (!container) throw AppError.notFound('Container not found');

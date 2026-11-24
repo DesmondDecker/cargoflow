@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { db } from './db';
+import { getDatabase } from './db';
 
 export type OutboxKind = 'importer_create' | 'importer_update' | 'document_upload' | 'driver_assign';
 
@@ -14,37 +14,44 @@ export interface OutboxItem {
 
 const newId = () => `out-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-export function enqueueOutbox(kind: OutboxKind, payload: Record<string, unknown>): string {
+export async function enqueueOutbox(kind: OutboxKind, payload: Record<string, unknown>): Promise<string> {
   const id = newId();
-  db.runSync('INSERT INTO outbox (id, kind, payload, createdAt, attempts) VALUES (?, ?, ?, ?, 0)', [id, kind, JSON.stringify(payload), new Date().toISOString()]);
+  const db = await getDatabase();
+  await db.runAsync('INSERT INTO outbox (id, kind, payload, createdAt, attempts) VALUES (?, ?, ?, ?, 0)', [id, kind, JSON.stringify(payload), new Date().toISOString()]);
   return id;
 }
 
-export function readOutbox(): OutboxItem[] {
-  const rows = db.getAllSync<{ id: string; kind: OutboxKind; payload: string; createdAt: string; attempts: number; lastError: string | null }>('SELECT * FROM outbox ORDER BY createdAt ASC');
+export async function readOutbox(): Promise<OutboxItem[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ id: string; kind: OutboxKind; payload: string; createdAt: string; attempts: number; lastError: string | null }>('SELECT * FROM outbox ORDER BY createdAt ASC');
   return rows.map((r) => ({ id: r.id, kind: r.kind, payload: JSON.parse(r.payload), createdAt: r.createdAt, attempts: r.attempts, lastError: r.lastError ?? undefined }));
 }
 
-export function removeOutbox(id: string): void {
-  db.runSync('DELETE FROM outbox WHERE id = ?', [id]);
+export async function removeOutbox(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM outbox WHERE id = ?', [id]);
 }
 
-export function markOutboxFailed(id: string, error: string): void {
-  db.runSync('UPDATE outbox SET attempts = attempts + 1, lastError = ? WHERE id = ?', [error, id]);
+export async function markOutboxFailed(id: string, error: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('UPDATE outbox SET attempts = attempts + 1, lastError = ? WHERE id = ?', [error, id]);
 }
 
-export function outboxLength(): number {
-  return db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM outbox')?.count ?? 0;
+export async function outboxLength(): Promise<number> {
+  const db = await getDatabase();
+  return (await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM outbox'))?.count ?? 0;
 }
 
 // ---- last-seen copies of lists ----
 
-export function cacheSet(key: string, value: unknown): void {
-  db.runSync('INSERT OR REPLACE INTO kv_cache (key, json, updatedAt) VALUES (?, ?, ?)', [key, JSON.stringify(value), new Date().toISOString()]);
+export async function cacheSet(key: string, value: unknown): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('INSERT OR REPLACE INTO kv_cache (key, json, updatedAt) VALUES (?, ?, ?)', [key, JSON.stringify(value), new Date().toISOString()]);
 }
 
-export function cacheGet<T>(key: string): T | undefined {
-  const row = db.getFirstSync<{ json: string }>('SELECT json FROM kv_cache WHERE key = ?', [key]);
+export async function cacheGet<T>(key: string): Promise<T | undefined> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ json: string }>('SELECT json FROM kv_cache WHERE key = ?', [key]);
   return row ? (JSON.parse(row.json) as T) : undefined;
 }
 
@@ -62,12 +69,16 @@ export interface SyncFailure {
 
 const FAILURES = 'sync_failures';
 
-export function recordSyncFailure(f: Omit<SyncFailure, 'at'>): void {
-  const all = cacheGet<SyncFailure[]>(FAILURES) ?? [];
-  cacheSet(FAILURES, [{ ...f, at: new Date().toISOString() }, ...all].slice(0, 30));
+export async function recordSyncFailure(f: Omit<SyncFailure, 'at'>): Promise<void> {
+  const all = (await cacheGet<SyncFailure[]>(FAILURES)) ?? [];
+  await cacheSet(FAILURES, [{ ...f, at: new Date().toISOString() }, ...all].slice(0, 30));
 }
-export const getSyncFailures = (): SyncFailure[] => cacheGet<SyncFailure[]>(FAILURES) ?? [];
-export const clearSyncFailures = (): void => cacheSet(FAILURES, []);
+export async function getSyncFailures(): Promise<SyncFailure[]> {
+  return (await cacheGet<SyncFailure[]>(FAILURES)) ?? [];
+}
+export async function clearSyncFailures(): Promise<void> {
+  await cacheSet(FAILURES, []);
+}
 
 // True when the request never got an answer (no signal, timeout), as opposed
 // to the server answering with an error.

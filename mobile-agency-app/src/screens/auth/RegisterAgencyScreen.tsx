@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/Screen';
 import { Field } from '../../components/Field';
@@ -67,7 +68,8 @@ export function RegisterAgencyScreen({ navigation }: Props) {
   const displayedError = validationError || storeError;
 
   return (
-    <Screen>
+    <Screen safeAreaEdges={['top', 'left', 'right', 'bottom']}>
+      <StatusBar style="dark" />
       <Text style={styles.title}>Register Your Agency</Text>
       <Text style={styles.subtitle}>
         Free to get started — no payment required. You'll become the agency owner and get a unique agency code to hand

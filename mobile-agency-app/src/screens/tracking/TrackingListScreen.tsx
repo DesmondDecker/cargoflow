@@ -5,6 +5,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/Screen';
 import { Card } from '../../components/Card';
+import { TrackingLookupPanel } from '../../components/TrackingLookupPanel';
 import { StatusPill } from '../../components/StatusPill';
 import { ChipRow } from '../../components/ChipRow';
 import { SearchBar } from '../../components/SearchBar';
@@ -76,11 +77,13 @@ export function TrackingListScreen({ navigation }: Props) {
         contentContainerStyle={styles.list}
         data={visible}
         keyExtractor={(c) => c._id}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.orange} />}
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={typography.h1}>Tracking</Text>
             <Text style={styles.sub}>{counts.transit} in transit · {counts.arrived} arrived · {counts.clearance} in clearance</Text>
+            <TrackingLookupPanel />
             <SearchBar value={search} onChangeText={setSearch} placeholder="Search container or carrier…" />
             <ChipRow options={FILTERS} value={filter} onChange={setFilter} />
             {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -84,7 +84,7 @@ export function AddImporterScreen({ navigation, route }: Props) {
     } catch (err) {
       if (isNetworkError(err)) {
         // No signal: keep the change on the phone and send it when online.
-        enqueueOutbox(importerId ? 'importer_update' : 'importer_create', importerId ? { id: importerId, name: name.trim(), input: { name: name.trim(), ...fields } } : { name: name.trim(), input: { name: name.trim(), ...fields } });
+        await enqueueOutbox(importerId ? 'importer_update' : 'importer_create', importerId ? { id: importerId, name: name.trim(), input: { name: name.trim(), ...fields } } : { name: name.trim(), input: { name: name.trim(), ...fields } });
         Alert.alert('Saved on this phone', 'You are offline. The client will be saved to the server automatically when you are back online.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       } else {
         setError(apiErrorMessage(err));

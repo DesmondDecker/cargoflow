@@ -12,7 +12,7 @@ import { CarrierPickerModal } from '../../components/CarrierPickerModal';
 import { TrackingReviewModal, ReviewedTracking } from '../../components/TrackingReviewModal';
 import axios from 'axios';
 import { findCarrier } from '../../constants/carriers';
-import { openMoreScreen } from '../../utils/navigation';
+import { openCustomsScreen } from '../../utils/navigation';
 import { colors, spacing, typography } from '../../theme/theme';
 import { fetchContainerCaseFile, refreshContainerTracking, changeContainerStatus, updateContainerDetails, pasteContainerTracking, setContainerShippingLine, previewContainerTracking, saveReviewedTracking, TrackingProposal } from '../../api/containerApi';
 import { fetchAgencySettings } from '../../api/agencyApi';
@@ -226,10 +226,10 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
     // possible — the case file itself isn't cached (only the containers
     // list is), so this screen must already be loaded before going
     // offline for the queued edit to have something to apply on top of.
-    enqueueMutation(containerId, 'status_change', { status: newStatus }, data.container.version);
+    await enqueueMutation(containerId, 'status_change', { status: newStatus }, data.container.version);
     const updatedContainer = { ...data.container, status: newStatus };
     setData({ ...data, container: updatedContainer });
-    upsertSingleContainer(updatedContainer);
+    await upsertSingleContainer(updatedContainer);
     setStatusUpdating(false);
     Alert.alert('Queued Offline', "This status change will sync automatically once you're back online.");
   };
@@ -336,7 +336,7 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
         title="🛃 Submit to Customs"
         variant="outline"
         onPress={() =>
-          openMoreScreen(navigation, 'CustomsSubmission', {
+          openCustomsScreen(navigation, 'CustomsSubmission', {
             prefill: {
               containerNumber: container.containerNumber,
               billOfLadingNumber: (container.blId as { blNumber?: string } | undefined)?.blNumber ?? '',
@@ -460,9 +460,22 @@ export function ContainerCaseFileScreen({ route, navigation }: Props) {
         ) : container.liveTracking?.resolved ? (
           <>
             <Row label="Carrier" value={container.liveTracking.carrierName || '—'} />
-            <Row label="Status" value={container.liveTracking.status || '—'} />
+            <Row label="Latest event" value={container.liveTracking.latestEvent?.description || container.liveTracking.status || '—'} />
+            {container.liveTracking.latestEvent?.location ? (
+              <Row
+                label="Where"
+                value={[container.liveTracking.latestEvent.location, container.liveTracking.latestEvent.facility].filter(Boolean).join(' · ')}
+              />
+            ) : null}
+            {container.liveTracking.latestEvent?.at ? <Row label="When" value={formatUtcDateTime(container.liveTracking.latestEvent.at)} /> : null}
+            {container.liveTracking.originPlace || container.liveTracking.destinationPlace ? (
+              <Row label="Route" value={`${container.liveTracking.originPlace || '—'} → ${container.liveTracking.destinationPlace || '—'}`} />
+            ) : null}
+            {container.liveTracking.departedAt ? <Row label="Departed" value={formatUtcDate(container.liveTracking.departedAt)} /> : null}
             <Row label="Vessel" value={container.liveTracking.vesselName || '—'} />
-            {container.liveTracking.eta ? <Row label="ETA" value={formatDate(container.liveTracking.eta)} /> : null}
+            {container.liveTracking.eta ? <Row label="Arrival" value={formatUtcDate(container.liveTracking.eta)} /> : null}
+            {container.liveTracking.eventsCompleted ? <Row label="Events" value={`${container.liveTracking.eventsCompleted} completed from origin`} /> : null}
+            {container.liveTracking.checkedAt ? <Text style={styles.muted}>Automatically checked {formatUtcDateTime(container.liveTracking.checkedAt)} UTC.</Text> : null}
             <Button title="Paste from carrier page" variant="outline" onPress={() => setPasteOpen(true)} style={styles.smallButton} />
           </>
         ) : (

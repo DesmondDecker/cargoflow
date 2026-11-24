@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Card } from './Card';
 import { Button } from './Button';
@@ -109,6 +111,7 @@ export function IdCardSection({ importerId, hasFront, hasBack, canView, onChange
       ))}
 
       <Modal visible={viewing !== null} animationType="fade" onRequestClose={() => setViewing(null)}>
+        <StatusBar style="light" />
         <SafeAreaView style={styles.viewer}>
           <Text style={styles.viewerTitle}>{viewing ? `ID card, ${SIDE_LABEL[viewing.side].toLowerCase()}` : ''}</Text>
           {viewing ? <Image source={{ uri: viewing.url }} style={styles.image} resizeMode="contain" /> : null}

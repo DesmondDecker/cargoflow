@@ -13,8 +13,8 @@ type Props = NativeStackScreenProps<MoreStackParamList, 'MoreHome'>;
 type IconName = keyof typeof Ionicons.glyphMap;
 
 const ITEMS: { icon: IconName; label: string; to: keyof MoreStackParamList; ownerAdminOnly?: boolean }[] = [
+  { icon: 'wallet-outline', label: 'Finance', to: 'Finance' },
   { icon: 'document-text-outline', label: 'Documents', to: 'Documents' },
-  { icon: 'shield-checkmark-outline', label: 'Customs Verification', to: 'CustomsSubmissions' },
   { icon: 'cube-outline', label: 'Storage Bookings', to: 'StorageBookings' },
   { icon: 'bar-chart-outline', label: 'Reports & Export', to: 'Reports' },
   { icon: 'business-outline', label: 'Importers', to: 'Importers' },

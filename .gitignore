@@ -7,9 +7,12 @@ Thumbs.db
 node_modules/
 **/node_modules/
 package-lock.json
+!backend/package-lock.json
+!mobile-agency-app/package-lock.json
 
 # Build artifacts
 **/dist/
+mobile-agency-app/dist-pwa/
 build/
 coverage/
 

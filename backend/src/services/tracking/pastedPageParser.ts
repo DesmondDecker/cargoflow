@@ -112,19 +112,23 @@ function parseContainerSegment(containerNumber: string, lines: string[], header:
   const viewIdx = lines.findIndex((l) => /^View\s+\d+\s+events?\s+completed/i.test(l));
   if (viewIdx >= 0) {
     result.eventsCompleted = Number(lines[viewIdx].match(/\d+/)![0]);
-    const latestIdx = lines.findIndex((l, i) => i > viewIdx && /^Latest event$/i.test(l));
-    if (latestIdx > viewIdx + 1) {
+    const latestIdx = lines.findIndex((l, i) => i > viewIdx && /\bLatest event\b/i.test(l));
+    if (latestIdx > viewIdx) {
       const eventLines = lines.slice(viewIdx + 1, latestIdx);
-      const description = eventLines[eventLines.length - 1];
-      const location = eventLines.length >= 2 ? eventLines[0] : undefined;
-      const facility = eventLines.length >= 3 ? eventLines.slice(1, -1).join(' ') : undefined;
+      const inlineDescription = lines[latestIdx].replace(/\bLatest event\b/i, '').trim();
+      const description = inlineDescription || eventLines[eventLines.length - 1];
+      const placeLines = inlineDescription ? eventLines : eventLines.slice(0, -1);
+      const location = placeLines.length >= 1 ? placeLines[0] : undefined;
+      const facility = placeLines.length >= 2 ? placeLines.slice(1).join(' ') : undefined;
       const when = (lines[latestIdx + 1] || '').match(new RegExp(`${DATE_SRC}(?:\\s+(\\d{1,2}):(\\d{2}))?`, 'i'));
-      result.latestEvent = {
-        description,
-        location,
-        facility,
-        at: when ? toDate(when[1], when[2], when[3], Number(when[4] || 0), Number(when[5] || 0)) : undefined,
-      };
+      if (description) {
+        result.latestEvent = {
+          description,
+          location,
+          facility,
+          at: when ? toDate(when[1], when[2], when[3], Number(when[4] || 0), Number(when[5] || 0)) : undefined,
+        };
+      }
     }
   }
 
@@ -147,6 +151,8 @@ export function parseCarrierTrackingPage(raw: string): ParsedCarrierPage {
   }
 
   const whole = lines.join('\n');
+  // Maersk labels these as nine-character B/L references. The adjacent
+  // location may be concatenated with the number in copied page text.
   const bl = whole.match(/BL number\s*([A-Z0-9]{9})/i);
   const blNumber = bl ? bl[1].toUpperCase() : undefined;
 

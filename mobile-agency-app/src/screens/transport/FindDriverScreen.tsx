@@ -35,9 +35,9 @@ export function FindDriverScreen({ route, navigation }: Props) {
       const result = await fetchCandidateDrivers(containerId);
       setDrivers(result.drivers);
       setContainerSize(result.containerSize);
-      cacheSet(`candidates:${containerId}`, result);
+      await cacheSet(`candidates:${containerId}`, result);
     } catch (err) {
-      const saved = isNetworkError(err) ? cacheGet<{ drivers: DriverCandidate[]; containerSize?: string }>(`candidates:${containerId}`) : undefined;
+      const saved = isNetworkError(err) ? await cacheGet<{ drivers: DriverCandidate[]; containerSize?: string }>(`candidates:${containerId}`) : undefined;
       if (saved) {
         setDrivers(saved.drivers);
         setContainerSize(saved.containerSize);
@@ -87,7 +87,7 @@ export function FindDriverScreen({ route, navigation }: Props) {
       if (isNetworkError(err)) {
         // No signal: keep the request and send it when online. The server
         // refuses it then if the driver is no longer free, and you are told.
-        enqueueOutbox('driver_assign', {
+        await enqueueOutbox('driver_assign', {
           containerId,
           driverName: selected.name,
           input: { driverId: selected._id, vehicleId: vehicle._id, pickupLocation: pickupLocation.trim(), destination: destination.trim(), fee: feeNumber },

@@ -38,19 +38,21 @@ export function ImportersListScreen({ navigation }: Props) {
       const result = await fetchImporters({ search: query || undefined });
       setImporters(result.importers);
       setShowingSaved(false);
-      if (!query) cacheSet('importers', result.importers); // the full list, for offline
+      if (!query) await cacheSet('importers', result.importers); // the full list, for offline
     } catch (err) {
       if (isNetworkError(err)) {
         // No signal: show the list as last seen, filtered by what was typed.
         const q = query.trim().toLowerCase();
-        setImporters((cacheGet<Importer[]>('importers') ?? []).filter((i) => !q || i.name.toLowerCase().includes(q)));
+        const cached = await cacheGet<Importer[]>('importers');
+        setImporters((cached ?? []).filter((i) => !q || i.name.toLowerCase().includes(q)));
         setShowingSaved(true);
       } else {
         setError(apiErrorMessage(err));
       }
     } finally {
       // Clients added with no signal that have not reached the server yet.
-      setPending(readOutbox().filter((o) => o.kind === 'importer_create').map((o) => ({ _id: o.id, name: String((o.payload as { name?: string }).name ?? ''), isActive: true })));
+      const outbox = await readOutbox();
+      setPending(outbox.filter((o) => o.kind === 'importer_create').map((o) => ({ _id: o.id, name: String((o.payload as { name?: string }).name ?? ''), isActive: true })));
       setLoading(false);
     }
   }, []);
@@ -82,6 +84,7 @@ export function ImportersListScreen({ navigation }: Props) {
       <FlatList
         data={[...pending, ...importers]}
         keyExtractor={(item) => item._id}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(search)} tintColor={colors.orange} />}
         ListEmptyComponent={loading ? undefined : <Text style={styles.empty}>No importers yet.</Text>}

@@ -23,35 +23,34 @@ Notifications.setNotificationHandler({
 // function fails fast and silently rather than crashing the app or sending
 // a token the backend can never actually deliver to.
 export async function registerForPushNotifications(): Promise<void> {
-  if (!Device.isDevice) {
-    return; // push tokens don't exist on simulators/emulators
-  }
-
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-  if (!projectId || projectId === 'REPLACE_WITH_YOUR_EAS_PROJECT_ID') {
-    // eslint-disable-next-line no-console
-    console.warn('[push] Skipping push registration: no EAS project ID configured in app.json (expo.extra.eas.projectId). Run `eas init` first.');
-    return;
-  }
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== 'granted') {
-    return; // user declined — nothing to register, and we don't nag them here
-  }
-
   try {
+    if (!Device.isDevice) {
+      return; // push tokens don't exist on simulators/emulators
+    }
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId || projectId === 'REPLACE_WITH_YOUR_EAS_PROJECT_ID') {
+      console.warn('[push] Skipping push registration: no EAS project ID configured in app.json (expo.extra.eas.projectId). Run `eas init` first.');
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      return; // user declined — nothing to register, and we don't nag them here
+    }
+
     const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
     await setPushToken(tokenResponse.data);
   } catch (err) {

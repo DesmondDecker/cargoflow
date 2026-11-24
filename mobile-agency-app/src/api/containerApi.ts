@@ -1,6 +1,8 @@
 import { api } from './client';
 import { ApiEnvelope, LiveTracking, ContainerCaseFile, ContainerListItem, DashboardStats, AttentionLevel, ExternalTrackingLookup } from '../types/api';
 
+const TRACKING_LOOKUP_TIMEOUT_MS = 70_000;
+
 export async function fetchContainers(params?: {
   status?: string;
   attentionLevel?: AttentionLevel;
@@ -55,6 +57,53 @@ export async function trackCodes(codes: string) {
     { params: { codes } }
   );
   return data.data;
+}
+
+export type TrackingReferenceType = 'container' | 'bill_of_lading';
+
+export async function trackUnregisteredContainer(code: string, referenceType: TrackingReferenceType = 'container', carrierName?: string) {
+  const { data } = await api.get<ApiEnvelope<{
+    containerNumber: string;
+    trackingNumber: string;
+    trackingType: TrackingReferenceType;
+    matchedContainerNumber?: string;
+    tracking?: LiveTracking;
+    saved: false;
+  }>>(
+    '/search/track-live',
+    {
+      params: { code, referenceType, ...(carrierName ? { carrierName } : {}) },
+      timeout: TRACKING_LOOKUP_TIMEOUT_MS,
+    }
+  );
+  return data.data;
+}
+
+export interface SavedTrackingItem {
+  _id: string;
+  containerNumber: string;
+  trackingType: TrackingReferenceType;
+  tracking: LiveTracking;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchSavedTracking() {
+  const { data } = await api.get<ApiEnvelope<{ savedTracking: SavedTrackingItem[] }>>('/search/saved-tracking');
+  return data.data.savedTracking;
+}
+
+export async function saveUnregisteredTracking(containerNumber: string, tracking: LiveTracking, trackingType: TrackingReferenceType = 'container') {
+  const { data } = await api.post<ApiEnvelope<{ savedTracking: SavedTrackingItem }>>('/search/saved-tracking', {
+    containerNumber,
+    tracking,
+    trackingType,
+  });
+  return data.data.savedTracking;
+}
+
+export async function deleteSavedTracking(containerNumber: string, trackingType: TrackingReferenceType = 'container') {
+  await api.delete(`/search/saved-tracking/${encodeURIComponent(containerNumber)}`, { params: { trackingType } });
 }
 
 export async function refreshContainerTracking(id: string) {
@@ -115,6 +164,14 @@ export async function resolveCode(code: string) {
     code?: string;
     carrierName?: string;
     publicTrackingUrl?: string;
+    detection?: {
+      type: 'container' | 'bill_of_lading' | 'unknown';
+      carrierName?: string;
+      confidence: 'high' | 'medium' | 'low';
+      carrierConfidence: 'high' | 'medium' | 'low';
+      source: string;
+      containerNumberValidation?: { formatValid: boolean; checkDigitValid: boolean | null; issue?: string };
+    };
   }>>(`/search/resolve/${encodeURIComponent(code)}`);
   return data.data;
 }

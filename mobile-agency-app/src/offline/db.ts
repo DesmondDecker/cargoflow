@@ -6,10 +6,21 @@ import * as SQLite from 'expo-sqlite';
  * scanned documents, and assigning a driver. The README's "Offline mode"
  * section lists exactly what is and is not covered.
  */
-const db = SQLite.openDatabaseSync('cargoflow.db');
+let databasePromise: Promise<SQLite.SQLiteDatabase> | undefined;
 
-export function initDatabase(): void {
-  db.execSync(`
+export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (!databasePromise) {
+    databasePromise = SQLite.openDatabaseAsync('cargoflow.db').catch((error: unknown) => {
+      databasePromise = undefined;
+      throw error;
+    });
+  }
+  return databasePromise;
+}
+
+export async function initDatabase(): Promise<void> {
+  const db = await getDatabase();
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS containers_cache (
       id TEXT PRIMARY KEY,
       containerNumber TEXT NOT NULL,
@@ -49,5 +60,3 @@ export function initDatabase(): void {
     );
   `);
 }
-
-export { db };

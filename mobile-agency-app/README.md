@@ -4,10 +4,10 @@ React Native + Expo app for CargoFlow — Summit Technologies.
 
 ## Setup
 
-Built on **Expo SDK 54** (React Native 0.81.5, React 19.1.0, React Navigation v7).
+Built on **Expo SDK 58** (React Native 0.88.1, React 19.3.0, React Navigation v7).
 
 ```bash
-npm install
+npm ci
 ```
 
 Point the app at your backend by editing `app.json` → `expo.extra.apiBaseUrl` (defaults to a placeholder URL). For local development against the backend running on your machine, use your machine's LAN IP rather than `localhost` if testing on a physical device (e.g. `http://192.168.1.20:4000/api/v1`).
@@ -36,14 +36,16 @@ New agencies aren't blocked by anything at signup — there's no payment step in
 
 ## Onboarding & Guides
 
-- **First-launch onboarding** (`src/screens/onboarding/OnboardingScreen.tsx`) — a 4-slide swipeable intro (Container Tracking, Document Management, Find a Driver, Smart Alerts) shown once, tracked via AsyncStorage (`src/utils/onboardingStorage.ts`). Skippable.
+- **First-launch onboarding** (`src/screens/onboarding/OnboardingScreen.tsx`) — a five-step animated guide to Containers, Documents, Drivers, Customs Verification and Smart Alerts, shown once and tracked via AsyncStorage (`src/utils/onboardingStorage.ts`). Skippable.
 - **Guides & Help** (More → Guides & Help) — static, in-app step-by-step guides: Getting Started, Tracking a Container, Managing Documents, Finding & Assigning a Driver, and Understanding Alerts. Content lives in `src/data/guides.ts` — edit that file to add or update guides, no backend involved.
 
 ## What's built in this pass
 
 - **Auth flow**, matching the backend exactly: Register Agency, Join Agency, Log In. Tokens in `expo-secure-store`, automatic silent refresh on a 401, forced sign-out if the refresh itself fails, plus the subscription-inactive interception (`src/api/client.ts`).
-- **Dashboard** — attention-level counts, today's daily digest, and a live sync-status banner (offline / syncing / pending change count).
+- **Dashboard / home** — animated shipment overview inspired by the mobile reference, searchable containers, quick actions, attention metrics, urgent shipments, today's digest and offline-sync status. Customs verification is available from its own bottom tab and a home shortcut.
+- **Shared mobile layout and visual system** — brand tokens, page backgrounds, card surfaces, fields, buttons and navigation headers are reused throughout. Scrollable screens adjust for the keyboard; standalone auth and guide screens include bottom safe-area spacing; searchable lists keep taps responsive while the keyboard is open.
 - **Containers** — filterable/searchable list (with an offline cache — see below), and the full **case file** screen: status (now changeable, offline-aware — see below), dates, deadlines, live tracking, document scanning, full activity timeline, and a **Find a Driver** button.
+- **Tracking & documents** — track by container number or bill of lading without registering the shipment, save either lookup type for later, and remove saved lookups from the agency list. If a B/L does not identify its shipping line, select it in the lookup panel. Documents can be removed from the active list; deletion is soft so submitted evidence remains recoverable.
 - **Document scanning** (`src/screens/documents/DocumentScannerScreen.tsx`) — real camera-based capture: take a photo per page, review/remove pages, then everything is assembled into a **single multi-page PDF** (`expo-print`) and uploaded as one document, not a loose JPEG. This is a genuine improvement over a gallery picker, but it is **not** the full "scan in seconds" experience from the product vision — there's no automatic edge detection, perspective correction, or auto-crop. Expo's managed workflow doesn't have a built-in equivalent; that would need a native document-scanner SDK (react-native-document-scanner-plugin or similar, which needs a custom dev client) or a paid third-party service. Pages upload exactly as the camera captured them.
 - **Offline mode** (`src/offline/`) — a real, working foundation, scoped deliberately to the highest-value loop rather than full coverage everywhere:
   - `db.ts` — a local SQLite database (`expo-sqlite`)
@@ -86,3 +88,86 @@ src/
   offline/      SQLite db, container cache, mutation queue, outbox (clients, documents, driver assignments), sync engine
   types/        API response shapes shared across screens
 ```
+# Agency app PWA
+
+The agency app can be exported as a browser-installable PWA:
+
+```sh
+EXPO_PUBLIC_API_BASE_URL=https://api.your-domain.example/api/v1 npm run build:web
+```
+
+On PowerShell, set the variable with
+`$env:EXPO_PUBLIC_API_BASE_URL='https://api.your-domain.example/api/v1'`
+before running the build. The build script refuses to export if the API URL
+is missing or is not HTTPS (loopback HTTP is allowed for local smoke tests).
+The static output is written to `dist/`. Deploy that directory at the site
+root over HTTPS and configure the API's `CORS_ORIGIN` to allow the deployed
+origin. The API URL is compiled into the web build from
+`EXPO_PUBLIC_API_BASE_URL`; set it to the production API before building.
+Do not deploy a web build that still points to localhost or a development LAN
+address.
+
+The web build includes an install manifest, CargoFlow icons, and a versioned
+service worker. Each export uses a new cache namespace; the worker checks for
+updates on launch, activates a new version immediately, and reloads an
+already-open app once the new worker takes control. It caches the app shell
+and hashed static assets only, never API responses or authenticated data.
+Container caches and queued changes use SQLite's asynchronous web
+implementation. Browser sessions keep tokens in `sessionStorage` and
+therefore do not use the native secure-storage provider. Use HTTPS in
+production.
+
+Some device-specific features remain native-only: push alerts and AdMob ads
+are disabled on web. The browser picker can upload multiple document images,
+each as a separate document; automatic edge scanning and combined PDF output
+require the installed mobile app.
+
+The Tracking tab also supports one-time container lookups without registering
+the container. You can save results to an agency-scoped tracking list and
+run a lookup again later. Saved lookups are not refreshed in the background;
+register the container in agency records for ongoing automatic updates.
+Maersk and MSC public-page providers, plus CMA CGM and Hapag-Lloyd public-page
+providers, are enabled by default and can be supplemented by configured
+carrier APIs or MarineTraffic. Live results depend on each carrier page/API
+being reachable and returning a parseable response; automated access
+challenges are reported rather than bypassed.
+
+To run the web version locally, set `EXPO_PUBLIC_API_BASE_URL` to a reachable
+development API and run `npm run web`. The PWA service worker and install
+prompt must be tested from localhost or an HTTPS origin.
+
+## Render deployment
+
+The repository-root `render.yaml` defines an API Docker service and a static
+agency PWA. Both deploy automatically after updates to the connected default
+branch. The API uses the `starter` plan so its daily jobs and browser-based
+tracking providers are not suspended with a sleeping free web service; this
+plan is paid. The static PWA can use Render's static-site plan.
+
+Before deploying:
+
+1. Connect the repository in Render and select the root `render.yaml`
+   Blueprint. Provide `MONGO_URI` for a production MongoDB deployment (for
+   example, MongoDB Atlas); do not use the local Docker Compose database.
+2. Set `CORS_ORIGIN` on the API to the exact deployed PWA origin, plus any
+   other web clients that need API access. The API intentionally refuses to
+   start in production with a wildcard or empty CORS origin.
+3. Set `EXPO_PUBLIC_API_BASE_URL` on the static PWA to the API's HTTPS URL
+   with the `/api/v1` suffix, for example
+   `https://cargoflow-api.onrender.com/api/v1`. This value is compiled into
+   the static bundle at build time.
+4. Configure the R2 account, access key, secret, bucket, and public base URL
+   on the API if document uploads are required. Configure the bucket's CORS
+   policy to permit the PWA origin to make presigned `PUT` uploads with the
+   `Content-Type` header. Keep client ID documents in a private bucket.
+5. Add any verified carrier API credentials and optional SMTP settings in
+   the API service's environment. Playwright Chromium is installed by the
+   backend Dockerfile for the public tracking providers.
+
+The API health check is `/health`. The PWA build fails if its API URL is
+missing, non-HTTPS, localhost, or a LAN address. Render serves the SPA route
+fallback, avoids caching the entry document and service worker, and gives
+hashed JS assets immutable caching. Each deploy stamps a new service-worker
+cache version so installed clients can take the new bundle on their next
+update check. Validate the installed app after the first deployment and
+after a later deploy on both desktop Chrome and a mobile browser.

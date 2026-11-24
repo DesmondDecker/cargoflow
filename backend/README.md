@@ -86,17 +86,18 @@ search + code-resolve, the full platform-admin surface (analytics, agencies,
 payments, gateway devices, plans, drivers, admins), the driver job lifecycle
 (assign → accept/decline → picked up → in transit → complete with photo +
 signature + GPS), driver vehicles, ISO 6346 container-number validation
-(real check-digit algorithm), a BIC owner-code carrier-guess table, a
+(real check-digit algorithm), a BIC owner-code carrier-guess table, and a
+shipping-identifier detector that distinguishes container numbers from
+bills of lading, reports check-digit validity and carrier confidence, and
+resolves CMA CGM, Hapag-Lloyd, Maersk, and MSC from recognized prefixes
+(preferring carrier details already recorded on an agency shipment),
 deadline engine (free-storage/demurrage), and a daily digest (on-demand +
-nightly cron) computed from real container/document data.
+nightly cron) computed from real container/document data; and scheduled public
+carrier tracking refreshes that save Maersk public-tracker results for the
+agency app.
 
 Documented, not built:
 
-- **Live vessel tracking** — a lookup chain exists (carrier API, MarineTraffic,
-  public-page scraper, then generic public tracking; see
-  `src/services/tracking/registry.ts` and `.env.example`) but no credentials
-  are configured by default, so out of the box it only identifies the carrier
-  and links its public page. Maersk's gateway rejected the keys tried so far.
 - **Mobile-money auto-verification** — the phone-side app now exists (`../gateway-app`, foreground only, untested on a device). `POST /gateway/sms-notifications`
   parses and attempts to match a real SMS to a pending `Payment`
   (`src/services/smsParser.ts`), but the regexes are only tuned against
@@ -106,6 +107,22 @@ Documented, not built:
 - Per-agency configurable status pipeline / document types / deadline day
   counts — currently fixed constants (`agencyController.ts`,
   `attentionEngine.ts`), not stored per agency.
+
+### Background vessel tracking
+
+The backend refreshes open containers daily at 08:30 and saves carrier
+results for the agency app's case-file and tracking screens. The lookup chain
+is carrier API, MarineTraffic, public-page scraper, then generic public
+tracking (`src/services/tracking/registry.ts`). Maersk, MSC, CMA CGM, and
+Hapag-Lloyd public UI scrapers are enabled by default and use Playwright with
+the normal public tracking forms when no custom `SCRAPER_URL_<CARRIER>` is set.
+Carrier UI layouts and availability can change; unresolved results are returned
+when a form or result cannot be parsed. The Docker image installs
+Chromium; local setups can run `npx playwright install chromium`. Set
+`TRACKING_SCRAPER_ENABLED=false` to disable scrapers. Lookups are serialized
+and throttled; CAPTCHA or access challenges return an explicit unresolved
+result and are never bypassed. Official carrier APIs remain preferred when
+credentials are available. Automated tests do not make live carrier requests.
 
 ## Why no Mongo transactions
 

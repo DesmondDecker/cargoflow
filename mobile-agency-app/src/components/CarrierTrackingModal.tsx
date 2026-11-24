@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Modal, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { Button } from './Button';
 import { colors, spacing, typography } from '../theme/theme';
@@ -59,6 +61,7 @@ export function CarrierTrackingModal({ visible, url, title, carrierName, capture
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <StatusBar style="dark" />
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title} numberOfLines={1}>{title} · {carrierName}</Text>

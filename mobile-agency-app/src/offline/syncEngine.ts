@@ -17,8 +17,9 @@ export function onSyncStatusChange(listener: (status: SyncStatus, pending: numbe
   };
 }
 
-function notify() {
-  const pending = queueLength() + outboxLength();
+async function notify(): Promise<void> {
+  const [mutations, outbox] = await Promise.all([queueLength(), outboxLength()]);
+  const pending = mutations + outbox;
   listeners.forEach((l) => l(currentStatus, pending));
 }
 
@@ -33,11 +34,11 @@ function notify() {
  * to retry next time.
  */
 export async function replayQueue(): Promise<void> {
-  const mutations = readQueuedMutations();
-  if (mutations.length === 0 && outboxLength() === 0) return;
+  const mutations = await readQueuedMutations();
+  if (mutations.length === 0 && await outboxLength() === 0) return;
 
   currentStatus = 'syncing';
-  notify();
+  await notify();
 
   for (const mutation of mutations) {
     try {
@@ -46,15 +47,15 @@ export async function replayQueue(): Promise<void> {
       } else if (mutation.type === 'date_update') {
         await updateContainerDates(mutation.containerId, mutation.payload as Record<string, string>);
       }
-      removeMutation(mutation.localId);
+      await removeMutation(mutation.localId);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409 || status === 400) {
         // Conflict or now-invalid mutation (e.g. status no longer valid) —
         // drop it rather than retry forever with the same bad request.
-        removeMutation(mutation.localId);
+        await removeMutation(mutation.localId);
       } else {
-        markMutationFailed(mutation.localId, (err as Error).message || 'Unknown error');
+        await markMutationFailed(mutation.localId, (err as Error).message || 'Unknown error');
       }
     }
   }
@@ -63,7 +64,7 @@ export async function replayQueue(): Promise<void> {
   await replayOutbox();
 
   currentStatus = 'idle';
-  notify();
+  await notify();
 }
 
 export function startSyncEngine(): () => void {
@@ -72,7 +73,7 @@ export function startSyncEngine(): () => void {
     const cameBackOnline = nowOnline && !isOnline;
     isOnline = nowOnline;
     currentStatus = isOnline ? 'idle' : 'offline';
-    notify();
+    void notify().catch((error: unknown) => console.error('Could not read the offline sync queue', error));
 
     if (cameBackOnline) {
       replayQueue().catch(() => {

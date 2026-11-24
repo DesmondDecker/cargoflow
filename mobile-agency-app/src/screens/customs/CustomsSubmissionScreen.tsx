@@ -8,11 +8,11 @@ import { Field } from '../../components/Field';
 import { createCustomsSubmission, fetchCustomsSubmission, resubmitCustomsSubmission } from '../../api/customsApi';
 import { apiErrorMessage } from '../../api/client';
 import { CustomsFields, CustomsSubmission } from '../../types/api';
-import { MoreStackParamList } from '../../navigation/types';
+import { CustomsStackParamList } from '../../navigation/types';
 import { formatShortDateTime } from '../../utils/status';
 import { colors, spacing, typography } from '../../theme/theme';
 
-type Props = NativeStackScreenProps<MoreStackParamList, 'CustomsSubmission'>;
+type Props = NativeStackScreenProps<CustomsStackParamList, 'CustomsSubmission'>;
 
 const EMPTY: CustomsFields = { cvcNumber: '', billOfLadingNumber: '', shippingAgency: '', containerNumber: '', documentName: '', itsNumber: '' };
 

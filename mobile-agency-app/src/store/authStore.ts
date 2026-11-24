@@ -53,8 +53,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
       const me = await authApi.fetchMe();
       set({ status: 'signedIn', user: me.user, agency: me.agency, subscriptionInactive: false });
-    } catch {
-      await clearTokens();
+    } catch (error) {
+      try {
+        await clearTokens();
+      } catch (cleanupError) {
+        console.error('Could not clear expired session tokens', { sessionError: error, cleanupError });
+      }
       set({ status: 'signedOut' });
     }
   },

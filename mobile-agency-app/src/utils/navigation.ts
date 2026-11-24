@@ -19,3 +19,11 @@ export function openContainersScreen(navigation: { getParent: () => unknown }, s
 export function openMoreScreen(navigation: { getParent: () => unknown }, screen: string, params?: object): void {
   (navigation.getParent() as TabNavigator | undefined)?.navigate('More', { screen, params });
 }
+
+export function openTab(navigation: { getParent: () => unknown }, tab: 'Tracking' | 'Customs'): void {
+  (navigation.getParent() as TabNavigator | undefined)?.navigate(tab);
+}
+
+export function openCustomsScreen(navigation: { getParent: () => unknown }, screen: string, params?: object): void {
+  (navigation.getParent() as TabNavigator | undefined)?.navigate('Customs', { screen, params });
+}

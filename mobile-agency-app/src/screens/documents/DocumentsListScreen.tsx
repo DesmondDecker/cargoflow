@@ -7,9 +7,10 @@ import { ChipRow } from '../../components/ChipRow';
 import { SearchBar } from '../../components/SearchBar';
 import { colors, radius, spacing, typography } from '../../theme/theme';
 import { formatShortDateTime } from '../../utils/status';
-import { fetchDocuments, reviewDocument } from '../../api/documentApi';
+import { deleteDocument, fetchDocuments, reviewDocument } from '../../api/documentApi';
 import { apiErrorMessage } from '../../api/client';
 import { CargoDocument } from '../../types/api';
+import { confirmDestructiveAction } from '../../utils/confirmDestructiveAction';
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -43,6 +44,7 @@ export function DocumentsListScreen() {
   const [query, setQuery] = useState('');
   const [documents, setDocuments] = useState<CargoDocument[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -87,6 +89,25 @@ export function DocumentsListScreen() {
     ]);
   };
 
+  const onDeleteDocument = async (doc: CargoDocument) => {
+    const confirmed = await confirmDestructiveAction(
+      'Delete document?',
+      `${doc.documentType} will be removed from the active document list. It can be recovered by your system administrator if needed.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(doc._id);
+    setError(null);
+    try {
+      await deleteDocument(doc._id);
+      setDocuments((current) => current.filter((item) => item._id !== doc._id));
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return documents.filter((d) => {
@@ -111,6 +132,7 @@ export function DocumentsListScreen() {
       <FlatList
         data={visible}
         keyExtractor={(d) => d._id}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.orange} />}
         ListEmptyComponent={
@@ -121,9 +143,14 @@ export function DocumentsListScreen() {
         renderItem={({ item }) => {
           const verified = item.reviewStatus === 'verified';
           return (
-            <Pressable onPress={() => onDocumentPress(item)}>
-              <Card style={styles.card}>
-                <View style={styles.row}>
+            <Card style={styles.card}>
+              <View style={styles.row}>
+                <Pressable
+                  onPress={() => onDocumentPress(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${item.documentType} details`}
+                  style={styles.documentDetails}
+                >
                   <Text style={styles.icon}>{DOC_ICONS[item.documentType] || '📄'}</Text>
                   <View style={styles.textWrap}>
                     <Text style={styles.type}>{item.documentType}</Text>
@@ -132,12 +159,23 @@ export function DocumentsListScreen() {
                     </Text>
                     {verified ? <Text style={styles.metaVerified}>Checked by {item.reviewedByName} · {formatShortDateTime(item.reviewedAt)}</Text> : null}
                   </View>
+                </Pressable>
+                <View style={styles.trailingActions}>
                   <View style={[styles.badge, verified ? styles.badgeVerified : styles.badgeReview]}>
                     <Text style={[styles.badgeText, verified ? styles.badgeTextVerified : styles.badgeTextReview]}>{verified ? 'Verified' : 'Needs review'}</Text>
                   </View>
+                  <Pressable
+                    onPress={() => onDeleteDocument(item)}
+                    disabled={deletingId === item._id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${item.documentType}`}
+                    style={styles.deleteButton}
+                  >
+                    <Text style={styles.deleteText}>{deletingId === item._id ? 'Deleting…' : 'Delete'}</Text>
+                  </Pressable>
                 </View>
-              </Card>
-            </Pressable>
+              </View>
+            </Card>
           );
         }}
       />
@@ -153,9 +191,13 @@ const styles = StyleSheet.create({
   listContent: { padding: spacing.lg, paddingTop: 0, gap: spacing.md },
   empty: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xxl },
   card: { marginBottom: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  documentDetails: { flexDirection: 'row', alignItems: 'center', flex: 1, minHeight: 48 },
   icon: { fontSize: 26, marginRight: spacing.md },
   textWrap: { flex: 1 },
+  trailingActions: { alignItems: 'flex-end', gap: spacing.xs },
+  deleteButton: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  deleteText: { ...typography.caption, color: colors.urgent, fontWeight: '700' },
   type: { ...typography.bodyMedium, fontSize: 16 },
   meta: { ...typography.caption, marginTop: 2 },
   metaVerified: { ...typography.caption, color: colors.normal, marginTop: 2 },

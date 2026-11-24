@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getDatabase } from './db';
 
 export type MutationType = 'status_change' | 'date_update';
 
@@ -17,14 +17,15 @@ function generateLocalId(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function enqueueMutation(
+export async function enqueueMutation(
   containerId: string,
   type: MutationType,
   payload: Record<string, unknown>,
   clientVersion?: number
-): string {
+): Promise<string> {
   const localId = generateLocalId();
-  db.runSync(
+  const db = await getDatabase();
+  await db.runAsync(
     `INSERT INTO mutation_queue (localId, containerId, type, payload, clientVersion, createdAt, attempts)
      VALUES (?, ?, ?, ?, ?, ?, 0)`,
     [localId, containerId, type, JSON.stringify(payload), clientVersion ?? null, new Date().toISOString()]
@@ -32,8 +33,9 @@ export function enqueueMutation(
   return localId;
 }
 
-export function readQueuedMutations(): QueuedMutation[] {
-  const rows = db.getAllSync<{
+export async function readQueuedMutations(): Promise<QueuedMutation[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{
     localId: string;
     containerId: string;
     type: MutationType;
@@ -56,15 +58,18 @@ export function readQueuedMutations(): QueuedMutation[] {
   }));
 }
 
-export function removeMutation(localId: string): void {
-  db.runSync('DELETE FROM mutation_queue WHERE localId = ?', [localId]);
+export async function removeMutation(localId: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM mutation_queue WHERE localId = ?', [localId]);
 }
 
-export function markMutationFailed(localId: string, error: string): void {
-  db.runSync('UPDATE mutation_queue SET attempts = attempts + 1, lastError = ? WHERE localId = ?', [error, localId]);
+export async function markMutationFailed(localId: string, error: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('UPDATE mutation_queue SET attempts = attempts + 1, lastError = ? WHERE localId = ?', [error, localId]);
 }
 
-export function queueLength(): number {
-  const row = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM mutation_queue');
+export async function queueLength(): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM mutation_queue');
   return row?.count ?? 0;
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy'; // expo-file-system v19+'s new default API is object-oriented (File/Directory) and doesn't have readAsStringAsync/EncodingType — the legacy import keeps this simple one-off base64 read working as-is
 import * as Print from 'expo-print';
@@ -13,6 +13,11 @@ import { enqueueOutbox, isNetworkError } from '../../offline/outbox';
 import { ContainersStackParamList, DashboardStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<ContainersStackParamList | DashboardStackParamList, 'DocumentScanner'>;
+interface CapturedPage {
+  uri: string;
+  mimeType?: string;
+  fileName?: string;
+}
 
 /**
  * Multi-page document scanning. "Scan document" opens the device's native
@@ -20,12 +25,12 @@ type Props = NativeStackScreenProps<ContainersStackParamList | DashboardStackPar
  * automatically (Apple's document camera on iOS, Google's ML Kit scanner on
  * Android). That needs a development or production build: the native module
  * is not in Expo Go, so there the app falls back to plain camera capture
- * ("Capture page"), which uploads each page exactly as the camera took it.
- * Pages from either source are assembled into one PDF and uploaded.
+ * ("Capture page"). Native pages are assembled into one PDF; web pages are
+ * uploaded as individual image documents.
  */
 export function DocumentScannerScreen({ route, navigation }: Props) {
   const { containerId, importerId, blId, documentType } = route.params;
-  const [pages, setPages] = useState<string[]>([]);
+  const [pages, setPages] = useState<CapturedPage[]>([]);
   const [processing, setProcessing] = useState(false);
 
   const scanDocument = async () => {
@@ -34,8 +39,11 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
         require('react-native-document-scanner-plugin') as typeof import('react-native-document-scanner-plugin');
       const { scannedImages, status } = await DocumentScanner.scanDocument({ croppedImageQuality: 85, maxNumDocuments: 24 });
       if (status === ScanDocumentResponseStatus.Success && scannedImages?.length) {
-        const uris = scannedImages.map((p) => (p.startsWith('file://') || p.startsWith('content://') ? p : `file://${p}`));
-        setPages((prev) => [...prev, ...uris]);
+        const captured = scannedImages.map((path) => ({
+          uri: path.startsWith('file://') || path.startsWith('content://') ? path : `file://${path}`,
+          mimeType: 'image/jpeg',
+        }));
+        setPages((prev) => [...prev, ...captured]);
       }
     } catch {
       Alert.alert(
@@ -46,6 +54,22 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
   };
 
   const capturePage = async () => {
+    if (Platform.OS === 'web') {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 0.7,
+      });
+      if (!result.canceled) {
+        setPages((prev) => [...prev, ...result.assets.map((asset) => ({
+          uri: asset.uri,
+          mimeType: asset.mimeType || 'image/jpeg',
+          fileName: asset.fileName || undefined,
+        }))]);
+      }
+      return;
+    }
+
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permission needed', 'CargoFlow needs camera access to scan a document.');
@@ -53,7 +77,11 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: false });
     if (!result.canceled && result.assets?.[0]) {
-      setPages((prev) => [...prev, result.assets[0].uri]);
+      setPages((prev) => [...prev, {
+        uri: result.assets[0].uri,
+        mimeType: result.assets[0].mimeType || 'image/jpeg',
+        fileName: result.assets[0].fileName || undefined,
+      }]);
     }
   };
 
@@ -67,11 +95,37 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
       return;
     }
     setProcessing(true);
+    let webUploadCompleted = 0;
     try {
+      if (Platform.OS === 'web') {
+        for (const [index, page] of pages.entries()) {
+          const mimeType = page.mimeType?.startsWith('image/') ? page.mimeType : 'image/jpeg';
+          const extension = mimeType.split('/')[1] || 'jpeg';
+          const fileName = page.fileName || `${documentType.replace(/\s+/g, '_')}_${Date.now()}_${index + 1}.${extension}`;
+          const upload = await requestUploadUrl(fileName, mimeType, containerId);
+          await uploadFileToPresignedUrl(upload.uploadUrl, page.uri, mimeType);
+          await registerDocument({
+            documentType,
+            importerId,
+            blId,
+            containerId,
+            fileKey: upload.fileKey,
+            mimeType,
+            pageCount: 1,
+          });
+          webUploadCompleted += 1;
+          setPages((current) => current.filter((captured) => captured !== page));
+        }
+        Alert.alert('Documents Uploaded', `${pages.length} image${pages.length === 1 ? '' : 's'} saved as separate ${documentType} document${pages.length === 1 ? '' : 's'}.`, [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+        return;
+      }
+
       // Build a simple HTML document with one full-bleed image per page,
       // then let expo-print render it to an actual multi-page PDF.
       const pageImages = await Promise.all(
-        pages.map(async (uri) => {
+        pages.map(async ({ uri }) => {
           const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
           return `data:image/jpeg;base64,${base64}`;
         })
@@ -101,7 +155,7 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
         await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
         const saved = `${dir}${fileName}`;
         await FileSystem.copyAsync({ from: pdfUri, to: saved });
-        enqueueOutbox('document_upload', { fileUri: saved, fileName, mimeType: 'application/pdf', containerId, importerId, blId, documentType, pageCount: pages.length });
+        await enqueueOutbox('document_upload', { fileUri: saved, fileName, mimeType: 'application/pdf', containerId, importerId, blId, documentType, pageCount: pages.length });
         Alert.alert('Saved on this phone', `${documentType} will upload automatically when you are back online. Keep CargoFlow installed until then.`, [{ text: 'OK', onPress: () => navigation.goBack() }]);
         return;
       }
@@ -119,7 +173,10 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {
-      Alert.alert('Upload failed', apiErrorMessage(err));
+      const completedMessage = webUploadCompleted > 0
+        ? `${webUploadCompleted} image${webUploadCompleted === 1 ? '' : 's'} uploaded successfully; the remaining image${webUploadCompleted === 1 ? ' is' : 's are'} still selected. `
+        : '';
+      Alert.alert('Upload failed', `${completedMessage}${apiErrorMessage(err)}`);
     } finally {
       setProcessing(false);
     }
@@ -132,6 +189,9 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
         <Text style={styles.headerSubtitle}>
           {pages.length === 0 ? 'Scan the first page' : `${pages.length} page${pages.length > 1 ? 's' : ''} captured`}
         </Text>
+        {Platform.OS === 'web' ? (
+          <Text style={styles.webNote}>Choose images to upload; each image is saved as its own document. Use the mobile app to create a combined PDF.</Text>
+        ) : null}
       </View>
 
       <FlatList
@@ -141,7 +201,7 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
         contentContainerStyle={styles.grid}
         renderItem={({ item, index }) => (
           <View style={styles.thumbWrap}>
-            <Image source={{ uri: item }} style={styles.thumb} />
+            <Image source={{ uri: item.uri }} style={styles.thumb} />
             <Text style={styles.pageNumber}>Page {index + 1}</Text>
             <Pressable style={styles.removeButton} onPress={() => removePage(index)}>
               <Text style={styles.removeButtonText}>✕</Text>
@@ -152,10 +212,10 @@ export function DocumentScannerScreen({ route, navigation }: Props) {
       />
 
       <View style={styles.footer}>
-        <Button title="Scan document (auto-crop)" onPress={scanDocument} style={styles.captureButton} />
-        <Button title="Capture page (camera)" variant="outline" onPress={capturePage} style={styles.captureButton} />
+        {Platform.OS === 'web' ? null : <Button title="Scan document (auto-crop)" onPress={scanDocument} style={styles.captureButton} />}
+        <Button title={Platform.OS === 'web' ? 'Choose image pages' : 'Capture page (camera)'} variant="outline" onPress={capturePage} style={styles.captureButton} />
         <Button
-          title={processing ? 'Preparing PDF…' : `Finish & Upload (${pages.length})`}
+          title={processing ? (Platform.OS === 'web' ? 'Uploading…' : 'Preparing PDF…') : `Finish & Upload (${pages.length})`}
           onPress={finishAndUpload}
           loading={processing}
           disabled={pages.length === 0}
@@ -169,8 +229,9 @@ const styles = StyleSheet.create({
   header: { padding: spacing.lg, paddingBottom: spacing.sm },
   headerTitle: { ...typography.h2 },
   headerSubtitle: { ...typography.body, color: colors.textSecondary, marginTop: 2 },
+  webNote: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
   grid: { padding: spacing.lg, paddingTop: 0, flexGrow: 1 },
-  thumbWrap: { width: '31%', marginRight: '3.5%', marginBottom: spacing.md },
+  thumbWrap: { width: '30%', marginRight: '3%', marginBottom: spacing.md },
   thumb: { width: '100%', aspectRatio: 0.75, borderRadius: radius.sm, backgroundColor: colors.border },
   pageNumber: { ...typography.caption, textAlign: 'center', marginTop: 4 },
   removeButton: {

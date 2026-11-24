@@ -25,7 +25,7 @@ export function AppPreferencesScreen() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [failures, setFailures] = useState<SyncFailure[]>(getSyncFailures());
+  const [failures, setFailures] = useState<SyncFailure[]>([]);
   const [sources, setSources] = useState<TrackingSourceSummary[] | null>(null);
   const [sourcesError, setSourcesError] = useState(false);
 
@@ -33,7 +33,24 @@ export function AppPreferencesScreen() {
     fetchTrackingSources().then(setSources).catch(() => setSourcesError(true));
   }, []);
 
-  useEffect(() => onSyncStatusChange((status, count) => { setSyncStatus(status); setPending(count); setFailures(getSyncFailures()); }), []);
+  useEffect(() => {
+    let active = true;
+    const loadFailures = () => {
+      getSyncFailures()
+        .then((items) => { if (active) setFailures(items); })
+        .catch((error: unknown) => console.error('Could not load offline sync failures', error));
+    };
+    loadFailures();
+    const unsubscribe = onSyncStatusChange((status, count) => {
+      setSyncStatus(status);
+      setPending(count);
+      loadFailures();
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   const syncNow = async () => {
     if (!getIsOnline()) {
@@ -79,7 +96,7 @@ export function AppPreferencesScreen() {
               {failures.map((f) => (
                 <Text key={`${f.at}-${f.summary}`} style={typography.caption}>{f.summary}: {f.reason}</Text>
               ))}
-              <Button title="Dismiss" variant="outline" onPress={() => { clearSyncFailures(); setFailures([]); }} />
+              <Button title="Dismiss" variant="outline" onPress={() => { clearSyncFailures().then(() => setFailures([])).catch((error: unknown) => console.error('Could not clear offline sync failures', error)); }} />
             </View>
           ) : null}
         </Card>

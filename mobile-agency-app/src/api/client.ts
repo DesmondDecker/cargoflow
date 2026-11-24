@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 const ACCESS_TOKEN_KEY = 'cargoflow_access_token';
@@ -9,20 +10,41 @@ export const baseURL = (Constants.expoConfig?.extra?.apiBaseUrl as string) || 'h
 
 export const api = axios.create({ baseURL, timeout: 15000 });
 
+function getWebSessionStorage(): Storage {
+  if (typeof window === 'undefined') {
+    throw new Error('CargoFlow session storage is only available in a browser.');
+  }
+  return window.sessionStorage;
+}
+
 export async function getAccessToken(): Promise<string | null> {
+  if (Platform.OS === 'web') return getWebSessionStorage().getItem(ACCESS_TOKEN_KEY);
   return SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
 }
 
 export async function getRefreshToken(): Promise<string | null> {
+  if (Platform.OS === 'web') return getWebSessionStorage().getItem(REFRESH_TOKEN_KEY);
   return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
 }
 
 export async function setTokens(accessToken: string, refreshToken?: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const storage = getWebSessionStorage();
+    storage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    if (refreshToken) storage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    return;
+  }
   await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
   if (refreshToken) await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export async function clearTokens(): Promise<void> {
+  if (Platform.OS === 'web') {
+    const storage = getWebSessionStorage();
+    storage.removeItem(ACCESS_TOKEN_KEY);
+    storage.removeItem(REFRESH_TOKEN_KEY);
+    return;
+  }
   await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
   await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
 }

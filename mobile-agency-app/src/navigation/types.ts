@@ -9,7 +9,7 @@ export type MainTabParamList = {
   Dashboard: undefined;
   Containers: undefined;
   Tracking: undefined;
-  Finance: undefined;
+  Customs: undefined;
   More: undefined;
 };
 
@@ -23,7 +23,7 @@ export type FinanceHomeStackParamList = {
 };
 
 export type ContainersStackParamList = {
-  ContainersList: undefined;
+  ContainersList: { search?: string } | undefined;
   ContainerCaseFile: { containerId: string; containerNumber?: string };
   FindDriver: { containerId: string };
   FindStorage: { containerId: string };
@@ -60,6 +60,11 @@ export type DocumentsStackParamList = {
   DocumentsList: undefined;
 };
 
+export type CustomsStackParamList = {
+  CustomsSubmissions: undefined;
+  CustomsSubmission: { submissionId?: string; prefill?: Partial<import('../types/api').CustomsFields> } | undefined;
+};
+
 export type GuidesStackParamList = {
   GuidesList: undefined;
   GuideDetail: { guideId: string; title: string };
@@ -67,6 +72,7 @@ export type GuidesStackParamList = {
 
 export type MoreStackParamList = {
   MoreHome: undefined;
+  Finance: undefined; // nested FinanceNavigator
   Importers: undefined; // nested ImportersNavigator
   Guides: undefined; // nested GuidesNavigator
   DemurrageTerms: undefined;
@@ -83,6 +89,4 @@ export type MoreStackParamList = {
   ChangeAgencyPassword: undefined;
   ChangeMyPin: undefined;
   ResetPin: { userId: string; name: string };
-  CustomsSubmissions: undefined;
-  CustomsSubmission: { submissionId?: string; prefill?: Partial<import('../types/api').CustomsFields> } | undefined;
 };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateContainerNumber, guessShippingLine, agencyHistoryConfidence, AGENCY_HISTORY_HIGH_CONFIDENCE_THRESHOLD } from './carrierDetection';
+import { validateContainerNumber, guessShippingLine, detectShippingIdentifier, agencyHistoryConfidence, AGENCY_HISTORY_HIGH_CONFIDENCE_THRESHOLD } from './carrierDetection';
 
 describe('validateContainerNumber', () => {
   it('accepts the official ISO 6346 worked example (CSQU3054383)', () => {
@@ -79,6 +79,70 @@ describe('guessShippingLine', () => {
     // resolves correctly off the real 4-character "MSCU" key.
     const result = guessShippingLine('MSCU2123456');
     expect(result.guess).toBe('MSC');
+  });
+
+  it.each([
+    ['MAEU1234567', 'Maersk'],
+    ['MSCU1234567', 'MSC'],
+    ['CMAU1234567', 'CMA CGM'],
+    ['HLCU1234567', 'Hapag-Lloyd'],
+  ])('routes %s to the %s tracking provider', (containerNumber, carrierName) => {
+    expect(guessShippingLine(containerNumber).guess).toBe(carrierName);
+  });
+});
+
+describe('detectShippingIdentifier', () => {
+  it.each([
+    ['MAEU0000800', 'Maersk'],
+    ['MSCU1234567', 'MSC'],
+    ['CMAU1234567', 'CMA CGM'],
+    ['HLCU1234567', 'Hapag-Lloyd'],
+  ])('identifies %s as a %s container number', (code, carrierName) => {
+    const result = detectShippingIdentifier(code);
+    expect(result.type).toBe('container');
+    expect(result.carrierName).toBe(carrierName);
+    expect(result.carrierConfidence).toBe('high');
+    expect(result.containerNumberValidation?.formatValid).toBe(true);
+  });
+
+  it.each([
+    ['MAEU12345678', 'Maersk'],
+    ['MEDU12345678', 'MSC'],
+    ['CMDU12345678', 'CMA CGM'],
+    ['HLCU12345678', 'Hapag-Lloyd'],
+  ])('identifies %s as a %s bill of lading', (code, carrierName) => {
+    const result = detectShippingIdentifier(code);
+    expect(result.type).toBe('bill_of_lading');
+    expect(result.carrierName).toBe(carrierName);
+    expect(result.carrierConfidence).toBe('high');
+  });
+
+  it('keeps a container-shaped code as a container when its check digit is wrong', () => {
+    const result = detectShippingIdentifier('CSQU3054380');
+    expect(result.type).toBe('container');
+    expect(result.confidence).toBe('medium');
+    expect(result.containerNumberValidation?.checkDigitValid).toBe(false);
+  });
+
+  it('does not claim a carrier for an unrecognized but plausible bill of lading', () => {
+    const result = detectShippingIdentifier('XYZQ12345678');
+    expect(result.type).toBe('bill_of_lading');
+    expect(result.carrierName).toBeUndefined();
+    expect(result.carrierConfidence).toBe('low');
+  });
+
+  it('recognizes 270560510 as a bill of lading without guessing its carrier', () => {
+    expect(detectShippingIdentifier('270560510')).toMatchObject({
+      type: 'bill_of_lading',
+      normalizedCode: '270560510',
+      confidence: 'medium',
+      carrierConfidence: 'low',
+      source: 'generic_bill_of_lading_format',
+    });
+  });
+
+  it('returns unknown for codes outside supported identifier formats', () => {
+    expect(detectShippingIdentifier('@@').type).toBe('unknown');
   });
 });
 

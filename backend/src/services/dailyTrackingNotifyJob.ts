@@ -16,15 +16,14 @@ interface TrackingChange {
 
 // Runs once a day (see server.ts, scheduled for 08:30). Two things happen
 // here that the 05:30 digest job deliberately doesn't do: it calls out to
-// real external carrier APIs (rate-limited, slower, can fail per-carrier),
-// and it pushes to devices rather than just writing a DB row someone has to
-// open the app to see.
+// real carrier APIs/public tracking pages (rate-limited, slower, can fail
+// per-carrier), and it pushes to devices rather than just writing a DB row
+// someone has to open the app to see.
 //
-// Only containers whose shipping line has a REAL configured provider
-// (Maersk/CMA CGM today, once credentials are set — see tracking/registry.ts)
-// get polled here. A carrier with no provider configured is skipped
-// entirely rather than re-running the static BIC-prefix guess, which never
-// changes and so is never worth a daily re-check or a notification.
+// Only containers whose shipping line has a configured provider (including
+// Maersk's public UI scraper by default — see tracking/registry.ts) get polled.
+// A carrier with no provider is skipped rather than re-running the static
+// BIC-prefix guess, which never changes and cannot produce a notification.
 async function refreshTrackingForAgency(agencyId: string): Promise<TrackingChange[]> {
   const containers = await ContainerModel.find({
     agencyId,

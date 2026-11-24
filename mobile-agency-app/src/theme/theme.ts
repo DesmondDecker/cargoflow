@@ -14,6 +14,10 @@ export const colors = {
   orange: '#F5820D', // primary actions, active states, brand accent
   orangeLight: '#FFA94D',
   orangeDark: '#C4650A',
+  orangeBg: '#FFF1E4',
+  orangeBorder: '#F6D6B8',
+  purple: '#7A3FE0',
+  purpleBg: '#F3EDFF',
   white: '#FFFFFF',
 
   // Neutrals

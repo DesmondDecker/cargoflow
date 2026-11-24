@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/Screen';
 import { Field } from '../../components/Field';
@@ -48,7 +49,8 @@ export function JoinAgencyScreen({ navigation }: Props) {
   const displayedError = validationError || storeError;
 
   return (
-    <Screen>
+    <Screen safeAreaEdges={['top', 'left', 'right', 'bottom']}>
+      <StatusBar style="dark" />
       <Text style={styles.title}>Join an Agency</Text>
       <Text style={styles.subtitle}>
         Ask your supervisor for the agency code and the current agency password (used only to join). Then choose your own 6-digit PIN — you will use it to log in. Your name is how you'll show up in every

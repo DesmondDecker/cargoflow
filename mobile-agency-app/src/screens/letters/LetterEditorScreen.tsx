@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { File, Paths } from 'expo-file-system';
@@ -13,6 +13,7 @@ import { apiErrorMessage } from '../../api/client';
 import { Letter } from '../../types/api';
 import { ContainersStackParamList } from '../../navigation/types';
 import { formatShortDateTime } from '../../utils/status';
+import { downloadAndShare } from '../../utils/download';
 import { colors, spacing, typography } from '../../theme/theme';
 
 type Props = NativeStackScreenProps<ContainersStackParamList, 'LetterEditor'>;
@@ -81,8 +82,15 @@ export function LetterEditorScreen({ route, navigation }: Props) {
     setBusy('share');
     try {
       const fresh = await fetchLetter(letterId); // also refreshes an expired login before the download below
-      const { url, headers } = await letterDownloadRequest(letterId);
       const reference = (fresh.fields.bl_number || fresh.fields.bl_numbers || 'letter').replace(/[^A-Za-z0-9_-]+/g, '-');
+      const fileName = `${fresh.templateKey}_${reference}.docx`;
+      if (Platform.OS === 'web') {
+        await downloadAndShare(`/letters/${letterId}/download`, fileName, DOCX_MIME, fresh.template.title);
+        apply(await fetchLetter(letterId));
+        return;
+      }
+
+      const { url, headers } = await letterDownloadRequest(letterId);
       const file = await File.downloadFileAsync(url, new File(Paths.cache, `${fresh.templateKey}_${reference}.docx`), { headers, idempotent: true });
       if (!(await Sharing.isAvailableAsync())) {
         Alert.alert('Saved', `The letter was saved to ${file.uri}, but sharing is not available on this device.`);

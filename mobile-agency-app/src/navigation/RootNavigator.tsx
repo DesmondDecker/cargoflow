@@ -20,10 +20,24 @@ export function RootNavigator() {
 
   useEffect(() => {
     bootstrap();
-    hasCompletedOnboarding().then((done) => {
-      setShowOnboarding(!done);
-      setOnboardingChecked(true);
-    });
+    let active = true;
+    const checkOnboarding = async () => {
+      try {
+        const done = await hasCompletedOnboarding();
+        if (!active) return;
+        setShowOnboarding(!done);
+        setOnboardingChecked(true);
+      } catch (error) {
+        console.error('Could not read onboarding status', error);
+        if (!active) return;
+        setShowOnboarding(false);
+        setOnboardingChecked(true);
+      }
+    };
+    void checkOnboarding();
+    return () => {
+      active = false;
+    };
   }, [bootstrap]);
 
   // Fires on a fresh login AND on a restored session from a previous
@@ -31,7 +45,9 @@ export function RootNavigator() {
   // one place that reliably knows "we have a valid session" for this device.
   useEffect(() => {
     if (status === 'signedIn') {
-      registerForPushNotifications();
+      void registerForPushNotifications().catch((error: unknown) => {
+        console.warn('[push] Registration failed unexpectedly', error);
+      });
     }
   }, [status]);
 

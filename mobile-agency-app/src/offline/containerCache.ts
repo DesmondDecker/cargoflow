@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getDatabase } from './db';
 import { ContainerListItem } from '../types/api';
 
 /**
@@ -7,11 +7,12 @@ import { ContainerListItem } from '../types/api';
  * automatically when a network fetch fails.
  */
 
-export function upsertContainers(containers: ContainerListItem[]): void {
+export async function upsertContainers(containers: ContainerListItem[]): Promise<void> {
   const now = new Date().toISOString();
-  db.withTransactionSync(() => {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
     for (const c of containers) {
-      db.runSync(
+      await db.runAsync(
         `INSERT INTO containers_cache (id, containerNumber, json, updatedAt, version)
          VALUES (?, ?, ?, ?, 1)
          ON CONFLICT(id) DO UPDATE SET containerNumber = excluded.containerNumber, json = excluded.json, updatedAt = excluded.updatedAt`,
@@ -21,20 +22,23 @@ export function upsertContainers(containers: ContainerListItem[]): void {
   });
 }
 
-export function readCachedContainers(): ContainerListItem[] {
-  const rows = db.getAllSync<{ json: string }>('SELECT json FROM containers_cache ORDER BY updatedAt DESC');
+export async function readCachedContainers(): Promise<ContainerListItem[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ json: string }>('SELECT json FROM containers_cache ORDER BY updatedAt DESC');
   return rows.map((r) => JSON.parse(r.json) as ContainerListItem);
 }
 
-export function upsertSingleContainer(container: ContainerListItem): void {
-  upsertContainers([container]);
+export async function upsertSingleContainer(container: ContainerListItem): Promise<void> {
+  await upsertContainers([container]);
 }
 
-export function readCachedContainer(id: string): ContainerListItem | null {
-  const row = db.getFirstSync<{ json: string }>('SELECT json FROM containers_cache WHERE id = ?', [id]);
+export async function readCachedContainer(id: string): Promise<ContainerListItem | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ json: string }>('SELECT json FROM containers_cache WHERE id = ?', [id]);
   return row ? (JSON.parse(row.json) as ContainerListItem) : null;
 }
 
-export function clearContainerCache(): void {
-  db.runSync('DELETE FROM containers_cache');
+export async function clearContainerCache(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM containers_cache');
 }

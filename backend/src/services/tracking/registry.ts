@@ -1,5 +1,8 @@
 import { DcsaTrackingProvider } from './dcsaProvider';
 import { ScraperTrackingProvider } from './scraperProvider';
+import { MaerskPublicUiTrackingProvider } from './maerskPublicUiProvider';
+import { MscPublicUiTrackingProvider } from './mscPublicUiProvider';
+import { GenericCarrierPublicUiTrackingProvider } from './genericCarrierPublicUiProvider';
 import { MarineTrafficProvider } from './marineTrafficProvider';
 import { ChainTrackingProvider, ChainMember } from './chainProvider';
 import { scacFor } from './carrierScac';
@@ -11,10 +14,10 @@ import { TrackingProvider } from './types';
 //   1. The carrier's own API (DCSA Track & Trace), when its credentials are set.
 //   2. MarineTraffic's Container Tracking API, a paid carrier-independent
 //      backup, when MARINETRAFFIC_API_KEY is set and the carrier's SCAC is known.
-//   3. The public-page scraper, opt-in per carrier (TRACKING_SCRAPER_ENABLED=true
-//      plus SCRAPER_URL_<CARRIER>). It only works on pages whose result is in
-//      the HTML the server receives; pages that build the result with
-//      JavaScript return nothing.
+//   3. The public-page scraper (enabled by default; disable with
+//      TRACKING_SCRAPER_ENABLED=false).
+//      Maersk and MSC use their public UIs; other carriers need
+//      SCRAPER_URL_<CARRIER> and a result page whose data is in returned HTML.
 //   4. Generic public tracking, which needs no setup and is the last resort:
 //      the carrier is identified from the container prefix and the app links
 //      to the carrier's own public tracking page (PUBLIC_TRACKER_URLS below).
@@ -28,13 +31,8 @@ import { TrackingProvider } from './types';
 //   CMA CGM:     developer.cma-cgm.com → Track & Trace API → OAuth2 client credentials
 //   Hapag-Lloyd: api-portal.hlag.com   → self-service portal, DCSA-conformant Track & Trace
 //
-// MSC is NOT self-service like the three above — real API access
-// (developerportal.msc.com, same DCSA standard, versions 1.2/2.2) exists
-// but goes through MSC's sales team, with fees possibly applying depending
-// on volume. If real credentials are not yet available, this registry will
-// activate an opt-in public-page scraper instead when TRACKING_SCRAPER_ENABLED
-// is true and MSC_TRACKER_URL is set, so the app still has a guarded fallback
-// while the commercial API path is being arranged.
+// MSC's DCSA API access (developerportal.msc.com, versions 1.2/2.2) goes
+// through its sales team. Its public UI remains available as a scraper fallback.
 //
 // Delmas has no entry anywhere in this codebase on purpose: it hasn't
 // existed as an independent carrier since March 1, 2016, when CMA CGM fully
@@ -164,16 +162,30 @@ function carrierSlug(carrierName: string): string {
   return carrierName.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
-// Scraper settings for one carrier. SCRAPER_URL_<CARRIER> is the page address
-// (it may contain {container}, or the number is added as a query parameter
-// named by SCRAPER_PARAM_<CARRIER>, default "container"). MSC_TRACKER_URL is
-// still honoured, as before.
+// Maersk, MSC, CMA CGM, and Hapag-Lloyd use their public UIs unless custom
+// SCRAPER_URL_* values are supplied. Other carriers use a static result page.
 function buildScraper(carrierName: string): TrackingProvider | undefined {
-  if (process.env.TRACKING_SCRAPER_ENABLED !== 'true') return undefined;
+  if (process.env.TRACKING_SCRAPER_ENABLED === 'false') return undefined;
   const slug = carrierSlug(carrierName);
-  const url = process.env[`SCRAPER_URL_${slug}`] || (carrierName === 'MSC' ? process.env.MSC_TRACKER_URL : undefined);
+  const url = process.env[`SCRAPER_URL_${slug}`];
+  if (carrierName === 'Maersk' && !url) return new MaerskPublicUiTrackingProvider();
+  if (carrierName === 'MSC' && !url) return new MscPublicUiTrackingProvider();
+  if (carrierName === 'CMA CGM' && !url) {
+    return new GenericCarrierPublicUiTrackingProvider({
+      carrierName,
+      trackingUrl: process.env.CMA_CGM_TRACKING_URL || PUBLIC_TRACKER_URLS[carrierName],
+      chromiumExecutablePath: process.env.CMA_CGM_CHROMIUM_EXECUTABLE_PATH,
+    });
+  }
+  if (carrierName === 'Hapag-Lloyd' && !url) {
+    return new GenericCarrierPublicUiTrackingProvider({
+      carrierName,
+      trackingUrl: process.env.HAPAG_LLOYD_TRACKING_URL || PUBLIC_TRACKER_URLS[carrierName],
+      chromiumExecutablePath: process.env.HAPAG_LLOYD_CHROMIUM_EXECUTABLE_PATH,
+    });
+  }
   if (!url) return undefined;
-  const param = process.env[`SCRAPER_PARAM_${slug}`] || (carrierName === 'MSC' ? 'containerNumber' : undefined);
+  const param = process.env[`SCRAPER_PARAM_${slug}`];
   return new ScraperTrackingProvider({ carrierName, trackingUrl: url, queryParamName: param });
 }
 

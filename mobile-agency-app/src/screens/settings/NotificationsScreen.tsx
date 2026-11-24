@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Screen } from '../../components/Screen';
 import { Card } from '../../components/Card';
@@ -79,9 +79,17 @@ export function NotificationsScreen() {
           <Switch value={driverUpdates} onValueChange={(v) => toggle('driverUpdates', v)} disabled={!loaded || saving} trackColor={{ true: colors.orange }} />
         </Card>
         <Card style={styles.stack}>
-          <Text style={typography.bodyMedium}>This device</Text>
-          <Text style={typography.caption}>{pushRegistered ? 'Registered to receive notifications. Only the most recently signed-in device receives them.' : 'Not registered yet, so no notifications will arrive here.'}</Text>
-          <Button title={pushRegistered ? 'Register this device again' : 'Enable notifications on this device'} variant="outline" onPress={enable} loading={enabling} />
+          <Text style={typography.bodyMedium}>{Platform.OS === 'web' ? 'Browser notifications' : 'This device'}</Text>
+          <Text style={typography.caption}>
+            {Platform.OS === 'web'
+              ? 'Push notifications are not configured for the web app. Use the CargoFlow mobile app for push alerts.'
+              : pushRegistered
+                ? 'Registered to receive notifications. Only the most recently signed-in device receives them.'
+                : 'Not registered yet, so no notifications will arrive here.'}
+          </Text>
+          {Platform.OS === 'web' ? null : (
+            <Button title={pushRegistered ? 'Register this device again' : 'Enable notifications on this device'} variant="outline" onPress={enable} loading={enabling} />
+          )}
         </Card>
       </View>
     </Screen>

@@ -13,6 +13,13 @@ export interface LiveTrackingValue {
   status?: string;
   vesselName?: string;
   eta?: Date;
+  originPlace?: string;
+  destinationPlace?: string;
+  departedAt?: Date;
+  latestEvent?: { description: string; location?: string; facility?: string; at?: Date };
+  eventsCompleted?: number;
+  carrierUpdatedNote?: string;
+  checkedAt?: Date;
   source: string;
   publicTrackingUrl?: string;
   externalRef?: string;
@@ -60,7 +67,11 @@ export function genericPublicTracking(container: TrackingContainer, ctx: Refresh
 // Returns true if the container's tracking changed.
 export function applyTrackingResult(container: TrackingContainer, result: TrackingResult, ctx: RefreshContext): boolean {
   if (result.resolved) {
-    container.liveTracking = { ...result, publicTrackingUrl: ctx.publicTrackingUrl } as LiveTrackingValue;
+    container.liveTracking = {
+      ...result,
+      checkedAt: result.checkedAt ?? new Date(),
+      publicTrackingUrl: ctx.publicTrackingUrl,
+    } as LiveTrackingValue;
     return true;
   }
   if (isPasted(container.liveTracking)) return false;

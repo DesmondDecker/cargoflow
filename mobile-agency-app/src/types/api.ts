@@ -73,6 +73,7 @@ export interface ContainerListItem {
 export interface LiveTracking {
   resolved: boolean;
   carrierName?: string;
+  matchedContainerNumber?: string;
   status?: string;
   vesselName?: string;
   eta?: string;
@@ -85,6 +86,7 @@ export interface LiveTracking {
   latestEvent?: { description: string; location?: string; facility?: string; at?: string };
   eventsCompleted?: number;
   carrierUpdatedNote?: string;
+  checkedAt?: string;
   recordedAt?: string;
   recordedByName?: string;
 }

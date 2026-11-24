@@ -33,4 +33,11 @@ describe('DcsaTrackingProvider Consumer-Key header', () => {
     await p.fetchTracking('MSKU1234565');
     expect(mocked.get.mock.calls[0][1]?.headers).not.toHaveProperty('Consumer-Key');
   });
+
+  it('queries DCSA by transport document reference for a bill of lading', async () => {
+    const p = new DcsaTrackingProvider({ carrierName: 'Maersk', tokenUrl: 't', apiBaseUrl: 'a', clientId: 'c', clientSecret: 's' });
+    await p.fetchTracking('270560510', { referenceType: 'bill_of_lading' });
+    expect(mocked.get.mock.calls[0][1]?.params).toMatchObject({ transportDocumentReference: '270560510' });
+    expect(mocked.get.mock.calls[0][1]?.params).not.toHaveProperty('equipmentReference');
+  });
 });

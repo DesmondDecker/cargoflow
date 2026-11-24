@@ -36,6 +36,7 @@ export function Button({ title, onPress, variant = 'primary', disabled, loading,
 
 const styles = StyleSheet.create({
   base: {
+    minHeight: 48,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../../components/Screen';
 import { Field } from '../../components/Field';
@@ -38,7 +39,8 @@ export function LoginScreen({ navigation }: Props) {
   const displayedError = validationError || storeError;
 
   return (
-    <Screen>
+    <Screen safeAreaEdges={['top', 'left', 'right', 'bottom']}>
+      <StatusBar style="dark" />
       <Text style={styles.title}>Log In</Text>
       <Text style={styles.subtitle}>Enter your agency code, your name or phone, and your own 6-digit PIN.</Text>
 

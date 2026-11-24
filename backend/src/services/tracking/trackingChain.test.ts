@@ -122,7 +122,7 @@ describe('applyTrackingResult (generic public tracking is the last resort)', () 
 describe('registry builds the chain from the environment', () => {
   const saved = { ...process.env };
   beforeEach(() => {
-    for (const k of Object.keys(process.env)) if (/^(MAERSK_|MSC_|CMACGM_|MARINETRAFFIC_|SCRAPER_|TRACKING_SCRAPER)/.test(k)) delete process.env[k];
+    for (const k of Object.keys(process.env)) if (/^(MAERSK_|MSC_|CMACGM_|CMA_CGM_|HAPAG_LLOYD_|MARINETRAFFIC_|SCRAPER_|TRACKING_SCRAPER)/.test(k)) delete process.env[k];
     resetTrackingRegistryForTests();
   });
   afterEach(() => {
@@ -131,8 +131,13 @@ describe('registry builds the chain from the environment', () => {
   });
 
   it('has no live source for a carrier until something is configured', () => {
+    process.env.TRACKING_SCRAPER_ENABLED = 'false';
     expect(getTrackingProvider('Maersk')).toBeUndefined();
     expect(describeTrackingSources().every((c) => c.liveSources.length === 0)).toBe(true);
+  });
+
+  it('enables the Maersk public UI scraper by default', () => {
+    expect(getTrackingProvider('Maersk')?.labels).toEqual(['public page scraper']);
   });
 
   it('orders carrier API, then MarineTraffic, then the scraper', () => {
@@ -146,17 +151,40 @@ describe('registry builds the chain from the environment', () => {
 
   it('MarineTraffic alone covers any carrier whose SCAC is known, and not one whose SCAC is not', () => {
     process.env.MARINETRAFFIC_API_KEY = 'key';
+    process.env.TRACKING_SCRAPER_ENABLED = 'false';
     expect(getTrackingProvider('MSC')?.labels).toEqual(['MarineTraffic']);
     expect(getTrackingProvider('NileDutch')).toBeUndefined();
   });
 
-  it('the scraper stays off unless it is switched on, and MSC_TRACKER_URL still works', () => {
+  it('the scraper can be disabled', () => {
     process.env.SCRAPER_URL_MSC = 'https://example.test/msc';
+    process.env.TRACKING_SCRAPER_ENABLED = 'false';
     expect(getTrackingProvider('MSC')).toBeUndefined();
-    resetTrackingRegistryForTests();
-    process.env.TRACKING_SCRAPER_ENABLED = 'true';
-    delete process.env.SCRAPER_URL_MSC;
-    process.env.MSC_TRACKER_URL = 'https://example.test/msc';
+  });
+
+  it('uses the MSC public UI scraper by default', () => {
     expect(getTrackingProvider('MSC')?.labels).toEqual(['public page scraper']);
+  });
+
+  it('uses a custom static scraper URL for MSC when configured', () => {
+    process.env.SCRAPER_URL_MSC = 'https://example.test/msc?container={container}';
+    expect(getTrackingProvider('MSC')?.labels).toEqual(['public page scraper']);
+  });
+
+  it('uses the Maersk public UI scraper when scraping is enabled without a custom URL', () => {
+    process.env.TRACKING_SCRAPER_ENABLED = 'true';
+    expect(getTrackingProvider('Maersk')?.labels).toEqual(['public page scraper']);
+  });
+
+  it.each(['CMA CGM', 'Hapag-Lloyd'])('uses the %s public UI scraper by default', (carrierName) => {
+    expect(getTrackingProvider(carrierName)?.labels).toEqual(['public page scraper']);
+  });
+
+  it.each([
+    ['CMA CGM', 'SCRAPER_URL_CMA_CGM'],
+    ['Hapag-Lloyd', 'SCRAPER_URL_HAPAG_LLOYD'],
+  ])('allows a custom static scraper URL for %s', (carrierName, variableName) => {
+    process.env[variableName] = 'https://example.test/track?container={container}';
+    expect(getTrackingProvider(carrierName)?.labels).toEqual(['public page scraper']);
   });
 });

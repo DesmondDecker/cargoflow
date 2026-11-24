@@ -21,11 +21,12 @@ const SIZES = {
  * dependency needed), since a rounded badge with a bold letterform gets
  * close enough for an in-app lockup without adding a new native library.
  */
-function IconMark({ dimension, fontSize }: { dimension: number; fontSize: number }) {
+function IconMark({ dimension, fontSize, light }: { dimension: number; fontSize: number; light: boolean }) {
   return (
     <View
       style={[
         styles.mark,
+        light && styles.markLight,
         {
           width: dimension,
           height: dimension,
@@ -33,7 +34,7 @@ function IconMark({ dimension, fontSize }: { dimension: number; fontSize: number
         },
       ]}
     >
-      <Text style={[styles.markLetter, { fontSize }]}>C</Text>
+      <Text style={[styles.markLetter, light && styles.markLetterLight, { fontSize }]}>C</Text>
     </View>
   );
 }
@@ -42,11 +43,11 @@ export function Logo({ size = 'medium', showTagline = false, showPoweredBy = fal
   const s = SIZES[size];
   return (
     <View style={styles.row}>
-      <IconMark dimension={s.mark} fontSize={s.markFont} />
+      <IconMark dimension={s.mark} fontSize={s.markFont} light={light} />
       <View style={styles.wordWrap}>
         <View style={styles.wordRow}>
           <Text style={[styles.wordCargo, { fontSize: s.word, color: light ? colors.white : colors.navy }]}>Cargo</Text>
-          <Text style={[styles.wordFlow, { fontSize: s.word }]}>Flow</Text>
+          <Text style={[styles.wordFlow, { fontSize: s.word, color: light ? colors.white : colors.orange }]}>Flow</Text>
         </View>
         {showTagline ? (
           <Text style={[styles.tagline, { fontSize: s.tagline, color: light ? 'rgba(255,255,255,0.7)' : colors.textSecondary }]}>
@@ -71,11 +72,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+  markLight: { backgroundColor: colors.white },
   markLetter: { color: colors.navy, fontWeight: '900' },
+  markLetterLight: { color: colors.orange },
   wordWrap: { justifyContent: 'center' },
   wordRow: { flexDirection: 'row', alignItems: 'baseline' },
   wordCargo: { fontWeight: '800', letterSpacing: -0.5 },
-  wordFlow: { fontWeight: '800', letterSpacing: -0.5, color: colors.orange },
+  wordFlow: { fontWeight: '800', letterSpacing: -0.5 },
   tagline: { fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
   poweredBy: { fontSize: 10, marginTop: 3, fontStyle: 'italic' },
 });

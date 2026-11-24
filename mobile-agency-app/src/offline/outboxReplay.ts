@@ -50,20 +50,20 @@ async function run(item: OutboxItem): Promise<void> {
 // (it can no longer work as asked) is removed and recorded for the user; a
 // server error (5xx) is kept for another try.
 export async function replayOutbox(): Promise<void> {
-  for (const item of readOutbox()) {
+  for (const item of await readOutbox()) {
     try {
       await run(item);
-      removeOutbox(item.id);
+      await removeOutbox(item.id);
     } catch (err) {
       if (isNetworkError(err)) return;
       const status = (err as { response?: { status?: number } })?.response?.status ?? 0;
       if (status >= 500) {
-        markOutboxFailed(item.id, apiErrorMessage(err));
+        await markOutboxFailed(item.id, apiErrorMessage(err));
         return;
       }
-      recordSyncFailure({ kind: item.kind, summary: describe(item), reason: apiErrorMessage(err) });
+      await recordSyncFailure({ kind: item.kind, summary: describe(item), reason: apiErrorMessage(err) });
       if (item.kind === 'document_upload') await FileSystem.deleteAsync((item.payload as P).fileUri, { idempotent: true }).catch(() => undefined);
-      removeOutbox(item.id);
+      await removeOutbox(item.id);
     }
   }
 }

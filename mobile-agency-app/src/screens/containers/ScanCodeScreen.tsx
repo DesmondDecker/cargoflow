@@ -45,7 +45,12 @@ export function ScanCodeScreen({ navigation }: Props) {
         return;
       }
       if (found.type === 'external_tracking' && found.publicTrackingUrl) {
-        Alert.alert('Not one of your containers', `${code} is not in this agency${found.carrierName ? `, but it looks like a ${found.carrierName} container` : ''}.`, [
+        const referenceType = found.detection?.type;
+        const referenceLabel = referenceType === 'bill_of_lading' ? 'bill of lading' : 'container';
+        const identifiedAs = referenceType === 'unknown'
+          ? ''
+          : `, but it looks like a ${found.carrierName ? `${found.carrierName} ` : ''}${referenceLabel}`;
+        Alert.alert('Not on file for this agency', `${code} is not in this agency${identifiedAs}.`, [
           { text: 'Open carrier tracking', onPress: () => Linking.openURL(found.publicTrackingUrl!) },
           { text: 'Scan again', onPress: again },
         ]);

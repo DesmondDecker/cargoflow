@@ -19,6 +19,7 @@ services:
       MONGO_URI: mongodb://mongo:27017/cargoflow
       ACCESS_TOKEN_SECRET: dev-access-secret-change-me
       REFRESH_TOKEN_SECRET: dev-refresh-secret-change-me
+      TRACKING_SCRAPER_ENABLED: ${TRACKING_SCRAPER_ENABLED:-true}
     depends_on:
       - mongo
 

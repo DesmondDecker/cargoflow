@@ -22,7 +22,14 @@
       "package": "com.summittechnologies.cargoflow"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single",
+      "name": "CargoFlow Agency",
+      "shortName": "CargoFlow",
+      "description": "Manage containers, shipment tracking, customs submissions and agency operations.",
+      "themeColor": "#0B1F3A",
+      "backgroundColor": "#F5F7FA",
+      "favicon": "./public/pwa-192.png"
     },
     "plugins": [
       [
@@ -50,6 +57,7 @@
           "color": "#F5820D"
         }
       ],
+      "expo-font",
       "expo-secure-store",
       "expo-sharing",
       "expo-sqlite",

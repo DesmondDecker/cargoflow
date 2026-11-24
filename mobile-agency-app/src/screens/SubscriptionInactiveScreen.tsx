@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { Screen } from '../components/Screen';
 import { Button } from '../components/Button';
 import { Logo } from '../components/Logo';
@@ -18,7 +19,8 @@ export function SubscriptionInactiveScreen() {
   const agency = useAuthStore((s) => s.agency);
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} safeAreaEdges={['top', 'left', 'right', 'bottom']}>
+      <StatusBar style="dark" />
       <View style={styles.content}>
         <Logo size="medium" />
         <View style={styles.iconWrap}>

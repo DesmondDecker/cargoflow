@@ -24,12 +24,13 @@ const FILTERS: { key: AttentionLevel | 'all'; label: string }[] = [
   { key: 'normal', label: 'Normal' },
 ];
 
-export function ContainersListScreen({ navigation }: Props) {
+export function ContainersListScreen({ navigation, route }: Props) {
   const [containers, setContainers] = useState<ContainerListItem[]>([]);
   const [filter, setFilter] = useState<AttentionLevel | 'all'>(usePrefsStore.getState().defaultContainerFilter);
   const [carrierFilter, setCarrierFilter] = useState<string | undefined>(undefined);
   const [carrierOptions, setCarrierOptions] = useState<{ name: string; count: number }[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(route.params?.search ?? '');
+  const searchRef = React.useRef(search);
   const [loading, setLoading] = useState(false);
   const [bulkTrackingLoading, setBulkTrackingLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +69,7 @@ export function ContainersListScreen({ navigation }: Props) {
       // Only the unfiltered view is cached — that's the one someone opens
       // with no connectivity, so it's the one worth having ready offline.
       if (activeFilter === 'all' && !query && !carrier) {
-        upsertContainers(result.containers);
+        await upsertContainers(result.containers);
       }
 
       if (!result.containers.length && query.trim() && !result.externalLookup) {
@@ -86,7 +87,7 @@ export function ContainersListScreen({ navigation }: Props) {
       // No connectivity (or the request otherwise failed) — fall back to
       // whatever was cached from the last successful load, so the screen
       // still shows something instead of just an error.
-      const cached = readCachedContainers();
+      const cached = await readCachedContainers();
       if (cached.length > 0 && activeFilter === 'all' && !query && !carrier) {
         setContainers(cached);
         setShowingCache(true);
@@ -110,10 +111,17 @@ export function ContainersListScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      load(filter, search, carrierFilter);
+      load(filter, route.params?.search ?? searchRef.current, carrierFilter);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filter, carrierFilter])
+    }, [filter, carrierFilter, route.params?.search])
   );
+
+  useEffect(() => {
+    if (route.params?.search === undefined) return;
+    searchRef.current = route.params.search;
+    setSearch(route.params.search);
+    navigation.setParams({ search: undefined });
+  }, [navigation, route.params?.search]);
 
   const onBulkTrack = useCallback(async () => {
     const raw = search.trim();
@@ -145,7 +153,10 @@ export function ContainersListScreen({ navigation }: Props) {
           placeholder="Search container or B/L number..."
           placeholderTextColor={colors.textMuted}
           value={search}
-          onChangeText={setSearch}
+          onChangeText={(value) => {
+            searchRef.current = value;
+            setSearch(value);
+          }}
           onSubmitEditing={() => load(filter, search, carrierFilter)}
           returnKeyType="search"
         />
@@ -237,6 +248,7 @@ export function ContainersListScreen({ navigation }: Props) {
       <FlatList
         data={containers}
         keyExtractor={(item) => item._id}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(filter, search, carrierFilter)} tintColor={colors.orange} />}
         ListEmptyComponent={loading ? undefined : <Text style={styles.empty}>No containers match this filter.</Text>}
