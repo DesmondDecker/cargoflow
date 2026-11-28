@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": { "backgroundColor": "#0B1F3A" },
+    "splash": { "backgroundColor": "#FFFFFF" },
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,

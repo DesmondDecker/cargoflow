@@ -7,6 +7,7 @@ import { requestReadSMSPermission, checkIfHasSMSPermission, startReadSMS } from 
 import { Config, loadConfig, saveConfig } from './src/store';
 import { clearLog, enqueue, flush, FlushResult, getLog, getQueue, LogEntry, onQueueChange, recordIgnored } from './src/queue';
 import { parseSmsEvent, shouldForward } from './src/sms';
+import { StartupSplash } from './src/components/StartupSplash';
 
 const PROBLEM: Record<NonNullable<FlushResult['problem']>, string> = {
   auth: 'The server rejected the API key. Messages are kept and will be sent once the key is fixed.',
@@ -25,6 +26,7 @@ function KeepAwake() {
 // matches them to pending payments. It reads messages only while the app is
 // open (Android stops background apps), so leave it open on a dedicated phone.
 export default function App() {
+  const [splashElapsed, setSplashElapsed] = useState(false);
   const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '', senders: [] });
   const [sendersText, setSendersText] = useState('');
   const [permission, setPermission] = useState<boolean | null>(null);
@@ -40,6 +42,11 @@ export default function App() {
 
   configRef.current = config;
   forwardingRef.current = forwarding;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSplashElapsed(true), 3500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const refresh = useCallback(async () => {
     setQueued((await getQueue()).length);
@@ -101,7 +108,7 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    splashElapsed ? <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
       {keepAwake ? <KeepAwake /> : null}
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -144,7 +151,7 @@ export default function App() {
           ))}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaView> : <StartupSplash />
   );
 }
 

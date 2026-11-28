@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "backgroundColor": "#0B1F3A"
+      "backgroundColor": "#FFFFFF"
     },
     "android": {
       "package": "com.summittechnologies.cargoflow.smsgateway",

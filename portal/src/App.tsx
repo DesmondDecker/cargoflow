@@ -10,6 +10,7 @@ import { ApprovedPage } from './pages/ApprovedPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { OversightPage } from './pages/OversightPage';
 import { WarehouseApp } from './warehouse/WarehouseApp';
+import { LandingPage } from './pages/LandingPage';
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
   const status = useAuthStore((s) => s.status);
@@ -32,21 +33,21 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={status === 'signedIn' ? <Navigate to={home} replace /> : <LandingPage />} />
         <Route path="/warehouse/*" element={<WarehouseApp />} />
         <Route path="/login" element={status === 'signedIn' ? <Navigate to={home} replace /> : <LoginPage />} />
-        <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-          <Route index element={<Navigate to={home} replace />} />
+        <Route element={<RequireAuth><Layout /></RequireAuth>}>
           {user?.institution === 'customs' ? (
             <>
-              <Route path="queue" element={<QueuePage />} />
-              <Route path="queue/:id" element={<RecordPage mode="review" />} />
-              <Route path="new" element={<NewRecordPage />} />
+              <Route path="/queue" element={<QueuePage />} />
+              <Route path="/queue/:id" element={<RecordPage mode="review" />} />
+              <Route path="/new" element={<NewRecordPage />} />
             </>
           ) : null}
-          <Route path="approved" element={<ApprovedPage />} />
-          <Route path="approved/:id" element={<RecordPage mode="approved" />} />
-          <Route path="reports" element={<ReportsPage />} />
-          {user?.isSupervisor ? <Route path="oversight" element={<OversightPage />} /> : null}
+          <Route path="/approved" element={<ApprovedPage />} />
+          <Route path="/approved/:id" element={<RecordPage mode="approved" />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          {user?.isSupervisor ? <Route path="/oversight" element={<OversightPage />} /> : null}
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
