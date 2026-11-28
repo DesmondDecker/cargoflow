@@ -139,12 +139,13 @@ export const completeJob = asyncHandler(async (req: Request, res: Response) => {
 
 const uploadUrlSchema = z.object({
   purpose: z.enum(['delivery_photo', 'delivery_signature', 'license_document']),
-  contentType: z.string().min(1),
+  contentType: z.string().trim().min(1),
+  fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
 });
 
 export const getDriverUploadUrl = asyncHandler(async (req: Request, res: Response) => {
   const input = uploadUrlSchema.parse(req.body);
-  const presigned = await createPresignedUploadUrl(input.purpose, input.contentType, req.auth!.driverId!);
+  const presigned = await createPresignedUploadUrl(input.purpose, input.contentType, req.auth!.driverId!, input.fileSizeBytes);
   return ok(res, presigned);
 });
 

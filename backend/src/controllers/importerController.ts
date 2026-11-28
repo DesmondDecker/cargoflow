@@ -57,7 +57,7 @@ export const fetchImporters = asyncHandler(async (req: Request, res: Response) =
   if (req.query.search) filter.name = new RegExp((req.query.search as string).trim(), 'i');
 
   const [importers, total] = await Promise.all([
-    ImporterModel.find(filter).select(WITH_ID_KEYS).sort({ name: 1 }).skip((page - 1) * limit).limit(limit),
+    ImporterModel.find(filter).select(WITH_ID_KEYS).sort({ name: 1 }).skip((page - 1) * limit).limit(limit).lean(),
     ImporterModel.countDocuments(filter),
   ]);
 
@@ -159,10 +159,14 @@ function idOwner(req: Request): string {
 }
 
 export const createIdCardUploadUrl = asyncHandler(async (req: Request, res: Response) => {
-  const { contentType } = z.object({ side: sideSchema, contentType: z.enum(ID_CONTENT_TYPES) }).parse(req.body);
+  const { contentType, fileSizeBytes } = z.object({
+    side: sideSchema,
+    contentType: z.enum(ID_CONTENT_TYPES),
+    fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
+  }).parse(req.body);
   const importer = await ImporterModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId });
   if (!importer) throw AppError.notFound('Importer not found');
-  const { uploadUrl, fileKey, expiresIn } = await createPresignedUploadUrl('client_id_card', contentType, idOwner(req));
+  const { uploadUrl, fileKey, expiresIn } = await createPresignedUploadUrl('client_id_card', contentType, idOwner(req), fileSizeBytes);
   return ok(res, { uploadUrl, fileKey, expiresIn });
 });
 

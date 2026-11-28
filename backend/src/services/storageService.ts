@@ -33,6 +33,14 @@ export const ALLOWED_UPLOAD_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
 };
 
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+export function validateUploadSize(sizeBytes: number | undefined): void {
+  if (sizeBytes !== undefined && (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_UPLOAD_BYTES)) {
+    throw AppError.badRequest('The file is larger than the 10 MB upload limit.', 'UPLOAD_TOO_LARGE');
+  }
+}
+
 export function extensionFor(contentType: string): string {
   const ext = ALLOWED_UPLOAD_TYPES[String(contentType).trim().toLowerCase()];
   if (!ext) {
@@ -56,8 +64,9 @@ export interface PresignedUpload {
   expiresIn: number;
 }
 
-export async function createPresignedUploadUrl(purpose: UploadPurpose, contentType: string, ownerId: string): Promise<PresignedUpload> {
+export async function createPresignedUploadUrl(purpose: UploadPurpose, contentType: string, ownerId: string, sizeBytes?: number): Promise<PresignedUpload> {
   const ext = extensionFor(contentType);
+  validateUploadSize(sizeBytes);
   contentType = contentType.trim().toLowerCase();
   if (!env.r2.configured) {
     throw AppError.notImplemented(
@@ -89,6 +98,7 @@ export async function createPresignedUploadUrl(purpose: UploadPurpose, contentTy
 // one doing the PUT. Same signing, same bucket, just no round trip.
 export async function uploadBufferToR2(purpose: UploadPurpose, ownerId: string, buffer: Buffer, contentType: string): Promise<{ fileKey: string; fileUrl: string }> {
   const ext = extensionFor(contentType);
+  validateUploadSize(buffer.length);
   if (!env.r2.configured) {
     throw AppError.notImplemented(
       'File storage is not configured on this server yet (R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET). Set these env vars to enable uploads.',

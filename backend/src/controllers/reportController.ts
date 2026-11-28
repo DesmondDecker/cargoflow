@@ -40,9 +40,9 @@ export const getReportSummary = asyncHandler(async (req: Request, res: Response)
   const since = periodStart(req.query.days);
 
   const [containers, expenses, documents] = await Promise.all([
-    ContainerModel.find({ agencyId }).select('status shippingLine attentionLevel createdAt'),
-    ExpenseModel.find({ agencyId, ...(since ? { createdAt: { $gte: since } } : {}) }).select('category amount currency status'),
-    CargoDocumentModel.find({ agencyId, deletedAt: null }).select('reviewStatus'),
+    ContainerModel.find({ agencyId }).select('status shippingLine attentionLevel createdAt').lean(),
+    ExpenseModel.find({ agencyId, ...(since ? { createdAt: { $gte: since } } : {}) }).select('category amount currency status').lean(),
+    CargoDocumentModel.find({ agencyId, deletedAt: null }).select('reviewStatus').lean(),
   ]);
 
   const verified = documents.filter((d) => d.reviewStatus === 'verified').length;

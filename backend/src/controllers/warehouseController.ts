@@ -72,12 +72,13 @@ export const addPhotos = asyncHandler(async (req: Request, res: Response) => {
 
 const uploadUrlSchema = z.object({
   purpose: z.enum(['warehouse_photo', 'storage_condition_photo']),
-  contentType: z.string().min(1),
+  contentType: z.string().trim().min(1),
+  fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
 });
 
 export const getWarehouseUploadUrl = asyncHandler(async (req: Request, res: Response) => {
   const input = uploadUrlSchema.parse(req.body);
-  const presigned = await createPresignedUploadUrl(input.purpose, input.contentType, req.auth!.warehouseId!);
+  const presigned = await createPresignedUploadUrl(input.purpose, input.contentType, req.auth!.warehouseId!, input.fileSizeBytes);
   return ok(res, presigned);
 });
 

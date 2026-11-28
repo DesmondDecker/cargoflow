@@ -196,7 +196,8 @@ export const fetchContainers = asyncHandler(async (req: Request, res: Response) 
       .populate('assignedOfficerId', 'name')
       .sort({ attentionRank: 1, updatedAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     ContainerModel.countDocuments(filter),
   ]);
 

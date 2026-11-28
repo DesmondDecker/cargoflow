@@ -113,10 +113,13 @@ export const rejectExpense = asyncHandler(async (req: Request, res: Response) =>
   return ok(res, { expense: expenseShape(expense) });
 });
 
-const uploadUrlSchema = z.object({ contentType: z.string().min(1) });
+const uploadUrlSchema = z.object({
+  contentType: z.string().trim().min(1),
+  fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
+});
 
 export const getExpenseUploadUrl = asyncHandler(async (req: Request, res: Response) => {
-  const { contentType } = uploadUrlSchema.parse(req.body);
-  const presigned = await createPresignedUploadUrl('expense_evidence', contentType, req.auth!.agencyId!);
+  const { contentType, fileSizeBytes } = uploadUrlSchema.parse(req.body);
+  const presigned = await createPresignedUploadUrl('expense_evidence', contentType, req.auth!.agencyId!, fileSizeBytes);
   return ok(res, presigned);
 });

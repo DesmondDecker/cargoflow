@@ -44,21 +44,26 @@ export const fetchDocuments = asyncHandler(async (req: Request, res: Response) =
   if (req.query.importerId) filter.importerId = req.query.importerId;
   if (req.query.documentType) filter.documentType = req.query.documentType;
 
-  const documents = await CargoDocumentModel.find(filter).sort({ createdAt: -1 });
+  const documents = await CargoDocumentModel.find(filter).sort({ createdAt: -1 }).lean();
   return ok(res, { documents: documents.map(documentShape) });
 });
 
 export const fetchDocument = asyncHandler(async (req: Request, res: Response) => {
-  const document = await CargoDocumentModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId, deletedAt: null });
+  const document = await CargoDocumentModel.findOne({ _id: req.params.id, agencyId: req.auth!.agencyId, deletedAt: null }).lean();
   if (!document) throw AppError.notFound('Document not found');
   return ok(res, { document: documentShape(document) });
 });
 
-const uploadUrlSchema = z.object({ fileName: z.string().min(1), contentType: z.string().min(1), containerId: z.string().optional() });
+const uploadUrlSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  contentType: z.string().trim().min(1),
+  fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
+  containerId: z.string().optional(),
+});
 
 export const requestUploadUrl = asyncHandler(async (req: Request, res: Response) => {
   const input = uploadUrlSchema.parse(req.body);
-  const presigned = await createPresignedUploadUrl('cargo_document', input.contentType, req.auth!.agencyId!);
+  const presigned = await createPresignedUploadUrl('cargo_document', input.contentType, req.auth!.agencyId!, input.fileSizeBytes);
   return ok(res, { uploadUrl: presigned.uploadUrl, fileKey: presigned.fileKey });
 });
 
@@ -68,8 +73,8 @@ const registerDocumentSchema = z.object({
   blId: z.string().optional(),
   containerId: z.string().optional(),
   fileKey: z.string().min(1),
-  mimeType: z.string().min(1),
-  fileSizeBytes: z.number().optional(),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']),
+  fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
   pageCount: z.number().optional(),
 });
 
@@ -80,6 +85,10 @@ const registerDocumentSchema = z.object({
 // duplicate row, matching the mobile client's DocumentVersion[] model.
 export const registerDocument = asyncHandler(async (req: Request, res: Response) => {
   const input = registerDocumentSchema.parse(req.body);
+  const expectedKeyPrefix = `cargo_document/${req.auth!.agencyId}/`;
+  if (!input.fileKey.startsWith(expectedKeyPrefix)) {
+    throw AppError.badRequest('The document file does not belong to this agency.', 'INVALID_FILE_KEY');
+  }
   const fileUrl = `${process.env.R2_PUBLIC_BASE_URL || ''}/${input.fileKey}`.replace(/^\//, '');
 
   let document = input.containerId
